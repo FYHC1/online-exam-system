@@ -3,6 +3,7 @@ package com.exam.system.controller;
 import com.exam.system.common.Result;
 import com.exam.system.entity.SysAnnouncement;
 import com.exam.system.entity.SysClass;
+import com.exam.system.entity.QuestionBank;
 import com.exam.system.entity.SysUser;
 import com.exam.system.service.AdminService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -20,6 +21,10 @@ public class AdminController {
     @Autowired
     private AdminService adminService;
 
+    private Integer getCurrentUserId() {
+        return 1;
+    }
+
     // --- Dashboard ---
     @GetMapping("/dashboard")
     public Result<Map<String, Object>> getDashboard() {
@@ -30,6 +35,84 @@ public class AdminController {
     @GetMapping("/users")
     public Result<List<SysUser>> getUsers(@RequestParam(required = false) String role, @RequestParam(required = false) String keyword) {
         return Result.success(adminService.getUsers(role, keyword));
+    }
+
+    @GetMapping("/resources/questions")
+    public Result<List<Map<String, Object>>> getGlobalQuestions() {
+        return Result.success(adminService.getGlobalQuestions());
+    }
+
+    @GetMapping("/resources/exams")
+    public Result<List<Map<String, Object>>> getGlobalExams() {
+        return Result.success(adminService.getGlobalExams());
+    }
+
+    @GetMapping("/org-structure")
+    public Result<List<Map<String, Object>>> getOrgStructure() {
+        return Result.success(adminService.getOrgStructure());
+    }
+
+    @GetMapping("/terms")
+    public Result<Map<String, Object>> getTermSettings() {
+        return Result.success(adminService.getTermSettings());
+    }
+
+    @PostMapping("/terms")
+    public Result<?> addTerm(@RequestBody Map<String, Object> payload) {
+        adminService.addTerm(payload);
+        return Result.success("学期新增成功");
+    }
+
+    @PutMapping("/terms/current")
+    public Result<?> updateCurrentTerm(@RequestBody Map<String, Object> payload) {
+        adminService.updateCurrentTerm(payload);
+        return Result.success("当前学期已更新");
+    }
+
+    @PostMapping("/org-structure/nodes")
+    public Result<?> addOrgNode(@RequestBody Map<String, Object> payload) {
+        adminService.addOrgNode(payload);
+        return Result.success("组织节点新增成功");
+    }
+
+    @PutMapping("/org-structure/nodes")
+    public Result<?> updateOrgNode(@RequestBody Map<String, Object> payload) {
+        adminService.updateOrgNode(payload);
+        return Result.success("组织节点更新成功");
+    }
+
+    @GetMapping("/resources/questions/{id}")
+    public Result<Map<String, Object>> getGlobalQuestionDetail(@PathVariable Integer id) {
+        return Result.success(adminService.getGlobalQuestionDetail(id));
+    }
+
+    @PostMapping("/resources/questions")
+    public Result<?> addGlobalQuestion(@RequestBody QuestionBank question) {
+        adminService.addGlobalQuestion(question, getCurrentUserId());
+        return Result.success("题目添加成功");
+    }
+
+    @DeleteMapping("/resources/questions/{id}")
+    public Result<?> deleteGlobalQuestion(@PathVariable Integer id) {
+        adminService.deleteGlobalQuestion(id);
+        return Result.success("题目已移出资源池");
+    }
+
+    @GetMapping("/resources/exams/{id}")
+    public Result<Map<String, Object>> getGlobalExamDetail(@PathVariable Integer id) {
+        return Result.success(adminService.getGlobalExamDetail(id));
+    }
+
+    @PutMapping("/resources/exams/{id}/status")
+    public Result<?> updateGlobalExamStatus(@PathVariable Integer id, @RequestParam String status) {
+        adminService.updateGlobalExamStatus(id, status);
+        return Result.success("试卷状态已更新");
+    }
+
+    @DeleteMapping("/resources/exams/{id}")
+    public Result<?> deleteGlobalExam(@PathVariable Integer id) {
+        adminService.deleteGlobalExam(id);
+        return Result.success("试卷已移出资源池");
     }
 
     @PostMapping("/users")

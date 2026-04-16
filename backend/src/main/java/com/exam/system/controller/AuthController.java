@@ -59,4 +59,13 @@ public class AuthController {
             return Result.error(e.getMessage());
         }
     }
+
+    @GetMapping("/register/options")
+    public Result<Map<String, Object>> getRegisterOptions() {
+        try {
+            return Result.success(authService.getRegisterOptions());
+        } catch (Exception e) {
+            return Result.error(e.getMessage());
+        }
+    }
 }

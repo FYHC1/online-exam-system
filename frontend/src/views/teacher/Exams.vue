@@ -152,7 +152,7 @@
               <div style="font-size: 12px; color: var(--text-secondary); text-align: center; margin-top: 6px;">简答 (题数)</div>
             </el-col>
           </el-row>
-          <div style="margin-top: 16px; display: flex; flex-wrap: wrap; gap: 10px;">
+          <div v-if="!editingExamId" style="margin-top: 16px; display: flex; flex-wrap: wrap; gap: 10px;">
             <el-tag
               v-for="item in autoConfigStatus"
               :key="item.key"
@@ -162,6 +162,7 @@
             </el-tag>
           </div>
           <p
+            v-if="!editingExamId"
             style="margin: 12px 0 0; font-size: 13px;"
             :style="{ color: autoConfigValid ? 'var(--success-color)' : 'var(--danger-color)' }"
           >
@@ -296,6 +297,26 @@ const buildTargetPaths = (targetClasses) => {
 
 const allExams = ref([])
 
+const deriveExamStatus = (exam) => {
+  const now = Date.now()
+  const startTime = exam.startTime ? new Date(exam.startTime).getTime() : null
+  const endTime = exam.endTime ? new Date(exam.endTime).getTime() : null
+
+  if (exam.status === 'cancelled') {
+    return '已结束'
+  }
+
+  if (endTime && now >= endTime) {
+    return '已结束'
+  }
+
+  if (startTime && now < startTime) {
+    return '未开始'
+  }
+
+  return '进行中'
+}
+
 const refreshSubjectStats = () => {
   subjects.value = subjects.value.map(subject => ({
     ...subject,
@@ -321,7 +342,7 @@ const fetchExams = async () => {
         endTimeRaw: e.endTime,
         startTime: new Date(e.startTime).toLocaleString(),
         endTime: new Date(e.endTime).toLocaleString(),
-        status: e.status === 'pending' ? '未开始' : (e.status === 'grading' || e.status === 'finished' ? '已结束' : '进行中')
+        status: deriveExamStatus(e)
       }
     })
     refreshSubjectStats()

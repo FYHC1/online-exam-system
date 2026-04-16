@@ -10,9 +10,7 @@
           <i class="el-icon-timer"></i>
           剩余时间：<span :class="{ 'warning': timeLeft < 300 }">{{ formatTime(timeLeft) }}</span>
         </div>
-        <div class="anti-cheat-status">切屏次数：{{ visibilityChangeCount }} / {{ maxVisibilityChanges }}</div>
         <el-button type="danger" @click="submitPaper">交卷</el-button>
-        <el-button @click="toggleFullscreen">{{ isFullscreen ? '退出全屏' : '全屏作答' }}</el-button>
       </div>
     </header>
 
@@ -75,15 +73,6 @@
       </aside>
     </div>
 
-    <el-dialog v-model="cheatWarningVisible" title="考试警告" width="420px" :close-on-click-modal="false" :show-close="false">
-      <p style="margin: 0; line-height: 1.8;">
-        检测到你已离开考试页面 {{ visibilityChangeCount }} 次。请立即返回并专注作答。
-        超过 {{ maxVisibilityChanges }} 次将自动强制交卷，并标记为异常结束。
-      </p>
-      <template #footer>
-        <el-button type="primary" @click="acknowledgeCheatWarning">我知道了</el-button>
-      </template>
-    </el-dialog>
   </div>
 </template>
 
@@ -97,15 +86,10 @@ const router = useRouter()
 const route = useRoute()
 const examId = route.params.examId
 
-const isFullscreen = ref(false)
 const timeLeft = ref(7200) // Default 120 mins
 const examTitle = ref('加载中...')
 let timer = null
-const maxVisibilityChanges = 3
-const visibilityChangeCount = ref(0)
-const cheatWarningVisible = ref(false)
-const hasSubmitted = ref(false)
-const isForceSubmitting = ref(false)
+const isFullscreen = ref(false)
 
 const currentIndex = ref(0)
 const answers = ref({})
@@ -184,112 +168,40 @@ const formatTime = (seconds) => {
   return `${h}:${m}:${s}`
 }
 
-const toggleFullscreen = () => {
-  if (!document.fullscreenElement) {
-    document.documentElement.requestFullscreen().catch(err => {
-      console.error(`Error attempting to enable fullscreen: ${err.message}`)
-    })
-    isFullscreen.value = true
-  } else {
-    document.exitFullscreen()
-    isFullscreen.value = false
-  }
-}
-
-const enforceFullscreen = () => {
-  if (!document.fullscreenElement) {
-    document.documentElement.requestFullscreen().then(() => {
-      isFullscreen.value = true
-    }).catch(() => {
-      ElMessage.warning('浏览器阻止了自动全屏，请手动点击“全屏作答”')
-    })
-  }
-}
-
-const acknowledgeCheatWarning = () => {
-  cheatWarningVisible.value = false
-  enforceFullscreen()
-}
-
 const buildAnswerList = () => Object.keys(answers.value).map(qId => {
   let ans = answers.value[qId]
   if (Array.isArray(ans)) ans = ans.join(',')
   return { questionId: qId, answer: ans || '' }
 })
 
-const handleVisibilityChange = async () => {
-  if (document.visibilityState !== 'hidden' || hasSubmitted.value) {
-    return
-  }
-
-  visibilityChangeCount.value += 1
-
-  if (visibilityChangeCount.value >= maxVisibilityChanges) {
-    ElMessage.error('切屏次数超过限制，系统将自动交卷并标记为异常结束。')
-    await submitPaper({ force: true, abnormalEnd: true, skipConfirm: true })
-    return
-  }
-
-  cheatWarningVisible.value = true
-}
-
-const handleFullscreenChange = () => {
-  isFullscreen.value = !!document.fullscreenElement
-}
-
 const blockClipboardAction = (event) => {
   event.preventDefault()
   ElMessage.warning('考试过程中禁止复制、粘贴和剪切操作')
 }
 
-const submitPaper = async ({ force = false, abnormalEnd = false, skipConfirm = false } = {}) => {
-  if (hasSubmitted.value || isForceSubmitting.value) {
-    return
-  }
-
-  const runSubmit = async () => {
-    isForceSubmitting.value = true
-
-    try {
-      await request.post('/student/exam/submit', {
-        examId: parseInt(examId),
-        answers: buildAnswerList(),
-        abnormalEnd,
-        cheatCount: visibilityChangeCount.value
-      })
-
-      hasSubmitted.value = true
-      ElMessage.success(abnormalEnd ? '考试已因异常结束自动交卷。' : '交卷成功，正在离开考场...')
-      if (document.fullscreenElement) {
-        document.exitFullscreen()
-      }
-      setTimeout(() => {
-        router.push('/student/dashboard')
-      }, 1500)
-    } catch (e) {
-      ElMessage.error(abnormalEnd ? '自动交卷失败，请联系监考老师' : '交卷失败')
-    } finally {
-      isForceSubmitting.value = false
-    }
-  }
-
-  if (skipConfirm || force) {
-    await runSubmit()
-    return
-  }
-
+const submitPaper = async () => {
   ElMessageBox.confirm(
     '交卷后将无法再次修改答案，确认要现在交卷吗？',
     '交卷提示',
     { confirmButtonText: '立即交卷', cancelButtonText: '继续检查', type: 'warning' }
-  ).then(runSubmit).catch(() => {})
+  ).then(async () => {
+    try {
+      await request.post('/student/exam/submit', {
+        examId: parseInt(examId),
+        answers: buildAnswerList()
+      })
+      ElMessage.success('交卷成功，正在离开考场...')
+      setTimeout(() => {
+        router.push('/student/dashboard')
+      }, 1500)
+    } catch (e) {
+      ElMessage.error('交卷失败')
+    }
+  }).catch(() => {})
 }
 
 onMounted(() => {
   fetchPaper()
-  enforceFullscreen()
-  document.addEventListener('visibilitychange', handleVisibilityChange)
-  document.addEventListener('fullscreenchange', handleFullscreenChange)
   document.addEventListener('copy', blockClipboardAction)
   document.addEventListener('cut', blockClipboardAction)
   document.addEventListener('paste', blockClipboardAction)
@@ -299,15 +211,13 @@ onMounted(() => {
     } else {
       clearInterval(timer)
       ElMessage.warning('考试时间到，系统已自动交卷！')
-      submitPaper({ force: true, skipConfirm: true })
+      submitPaper()
     }
   }, 1000)
 })
 
 onUnmounted(() => {
   if (timer) clearInterval(timer)
-  document.removeEventListener('visibilitychange', handleVisibilityChange)
-  document.removeEventListener('fullscreenchange', handleFullscreenChange)
   document.removeEventListener('copy', blockClipboardAction)
   document.removeEventListener('cut', blockClipboardAction)
   document.removeEventListener('paste', blockClipboardAction)
@@ -349,11 +259,6 @@ onUnmounted(() => {
   gap: 20px;
 }
 
-.anti-cheat-status {
-  font-size: 14px;
-  color: var(--warning-color);
-  font-weight: 600;
-}
 
 .timer {
   font-size: 18px;

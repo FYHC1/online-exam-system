@@ -3,6 +3,7 @@ package com.exam.system.entity;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.baomidou.mybatisplus.annotation.TableField;
 import java.util.Date;
 
 @TableName("sys_user")
@@ -18,6 +19,14 @@ public class SysUser {
     private Integer classId;
     private Integer status; // 1 normal, 0 disabled
     private Date createTime;
+    @TableField(exist = false)
+    private String grade;
+    @TableField(exist = false)
+    private String department;
+    @TableField(exist = false)
+    private String major;
+    @TableField(exist = false)
+    private String className;
 
     public Integer getUserId() {
         return userId;
@@ -89,5 +98,37 @@ public class SysUser {
 
     public void setCreateTime(Date createTime) {
         this.createTime = createTime;
+    }
+
+    public String getGrade() {
+        return grade;
+    }
+
+    public void setGrade(String grade) {
+        this.grade = grade;
+    }
+
+    public String getDepartment() {
+        return department;
+    }
+
+    public void setDepartment(String department) {
+        this.department = department;
+    }
+
+    public String getMajor() {
+        return major;
+    }
+
+    public void setMajor(String major) {
+        this.major = major;
+    }
+
+    public String getClassName() {
+        return className;
+    }
+
+    public void setClassName(String className) {
+        this.className = className;
     }
 }

@@ -75,13 +75,13 @@
           </el-table-column>
           <el-table-column prop="status" label="状态" width="100">
             <template #default="scope">
-              <el-tag :type="scope.row.status === '待批阅' ? 'danger' : 'success'">{{ scope.row.status }}</el-tag>
+              <el-tag :type="scope.row.status === '待批阅' ? 'danger' : (scope.row.status === '异常结束' ? 'warning' : 'success')">{{ scope.row.status }}</el-tag>
             </template>
           </el-table-column>
           <el-table-column label="操作" width="160" align="center">
             <template #default="scope">
               <el-button type="primary" size="small" plain @click="startGrading(scope.row)">
-                {{ scope.row.status === '待批阅' ? (scope.row.hasSubjective ? '批阅试卷' : '查看结果') : '查看批阅' }}
+                {{ getActionLabel(scope.row) }}
               </el-button>
             </template>
           </el-table-column>
@@ -191,7 +191,7 @@ const fetchGrading = async () => {
           studentClass: r.studentClass, // Used real data from DB
           studentName: r.studentName, // Used real data from DB
           objectiveScore: r.record.objectiveScore || 0,
-          status: r.record.status === 'finished' ? '已批阅' : '待批阅',
+          status: r.record.status === 'finished' ? '已批阅' : (r.record.status === 'abnormal' ? '异常结束' : '待批阅'),
           hasSubjective: !!r.hasSubjective
         })
       }
@@ -213,6 +213,16 @@ const filteredPapers = computed(() => {
            (!filters.value.class || p.studentClass.includes(filters.value.class))
   })
 })
+
+const getActionLabel = (row) => {
+  if (row.status === '异常结束') {
+    return '异常记录'
+  }
+  if (row.status === '待批阅') {
+    return row.hasSubjective ? '批阅试卷' : '查看结果'
+  }
+  return '查看批阅'
+}
 
 const enterSubjectGrading = (subj) => {
   currentSubject.value = subj

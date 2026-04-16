@@ -2,6 +2,7 @@ package com.exam.system.service;
 
 import com.exam.system.entity.SysAnnouncement;
 import com.exam.system.entity.SysClass;
+import com.exam.system.entity.QuestionBank;
 import com.exam.system.entity.SysUser;
 
 import java.util.List;
@@ -18,6 +19,20 @@ public interface AdminService {
      * User Management
      */
     List<SysUser> getUsers(String role, String keyword);
+    List<Map<String, Object>> getGlobalQuestions();
+    List<Map<String, Object>> getGlobalExams();
+    List<Map<String, Object>> getOrgStructure();
+    Map<String, Object> getTermSettings();
+    void addTerm(Map<String, Object> payload);
+    void updateCurrentTerm(Map<String, Object> payload);
+    void addOrgNode(Map<String, Object> payload);
+    void updateOrgNode(Map<String, Object> payload);
+    Map<String, Object> getGlobalQuestionDetail(Integer questionId);
+    void addGlobalQuestion(QuestionBank question, Integer createBy);
+    void deleteGlobalQuestion(Integer questionId);
+    Map<String, Object> getGlobalExamDetail(Integer examId);
+    void updateGlobalExamStatus(Integer examId, String status);
+    void deleteGlobalExam(Integer examId);
     void addUser(SysUser user);
     void updateUser(SysUser user);
     void deleteUser(Integer userId);

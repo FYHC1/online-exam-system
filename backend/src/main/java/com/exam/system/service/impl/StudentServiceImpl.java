@@ -168,13 +168,20 @@ public class StudentServiceImpl implements StudentService {
         recordMapper.insert(record);
         
         int totalObjectiveScore = 0;
-        
-        // 2. Parse answers and auto-grade objective questions
+        Map<Integer, String> answerByQuestionId = new HashMap<>();
         for (Map<String, Object> ans : answers) {
             Integer questionId = Integer.parseInt(ans.get("questionId").toString());
-            String text = ans.get("answer").toString();
-            
+            answerByQuestionId.put(questionId, ans.get("answer") != null ? ans.get("answer").toString() : "");
+        }
+        
+        // 2. Parse answers and auto-grade objective questions
+        for (PaperQuestionRel rel : paperQuestionRels) {
+            Integer questionId = rel.getQuestionId();
+            String text = answerByQuestionId.getOrDefault(questionId, "");
             QuestionBank q = questionMapper.selectById(questionId);
+            if (q == null) {
+                continue;
+            }
             
             StudentAnswerDetail detail = new StudentAnswerDetail();
             detail.setRecordId(record.getRecordId());

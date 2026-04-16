@@ -2,6 +2,7 @@ package com.exam.system.service;
 
 import com.exam.system.entity.SysUser;
 import java.util.Map;
+import java.util.List;
 
 public interface AuthService {
 
@@ -19,4 +20,9 @@ public interface AuthService {
      * User registration (students only)
      */
     void register(SysUser sysUser);
+
+    /**
+     * Public registration options for students
+     */
+    Map<String, Object> getRegisterOptions();
 }

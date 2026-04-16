@@ -39,29 +39,22 @@
           <template v-if="currentRole.id === 'student'">
             <el-form-item label="年级：">
               <el-select v-model="filters.grade" placeholder="全部" clearable style="width: 100px">
-                <el-option label="2021级" value="2021级" />
-                <el-option label="2022级" value="2022级" />
-                <el-option label="2023级" value="2023级" />
+                <el-option v-for="grade in gradeOptions" :key="grade" :label="grade" :value="grade" />
               </el-select>
             </el-form-item>
             <el-form-item label="学院：">
               <el-select v-model="filters.college" placeholder="全部" clearable style="width: 120px">
-                <el-option label="计算机学院" value="计算机学院" />
-                <el-option label="软件学院" value="软件学院" />
+                <el-option v-for="department in allDepartmentOptions" :key="department" :label="department" :value="department" />
               </el-select>
             </el-form-item>
             <el-form-item label="专业：">
               <el-select v-model="filters.major" placeholder="全部" clearable style="width: 120px">
-                <el-option label="计算机科学" value="计算机科学" />
-                <el-option label="软件工程" value="软件工程" />
+                <el-option v-for="major in allMajorOptions" :key="major" :label="major" :value="major" />
               </el-select>
             </el-form-item>
             <el-form-item label="班级：">
               <el-select v-model="filters.class" placeholder="全部" clearable style="width: 100px">
-                <el-option label="1班" value="1班" />
-                <el-option label="2班" value="2班" />
-                <el-option label="A班" value="A班" />
-                <el-option label="B班" value="B班" />
+                <el-option v-for="className in classLabelOptions" :key="className" :label="className" :value="className" />
               </el-select>
             </el-form-item>
           </template>
@@ -70,9 +63,7 @@
           <template v-if="currentRole.id === 'teacher'">
             <el-form-item label="所属学院：">
               <el-select v-model="filters.college" placeholder="全部学院" clearable style="width: 150px">
-                <el-option label="计算机与信息学院" value="计算机与信息学院" />
-                <el-option label="外语学院" value="外语学院" />
-                <el-option label="理学院" value="理学院" />
+                <el-option v-for="department in allDepartmentOptions" :key="department" :label="department" :value="department" />
               </el-select>
             </el-form-item>
           </template>
@@ -142,10 +133,38 @@
           <el-radio-group v-model="addForm.role">
             <el-radio label="student">普通学生</el-radio>
             <el-radio label="teacher">教职人员</el-radio>
+            <el-radio label="admin">系统管理员</el-radio>
           </el-radio-group>
         </el-form-item>
-        <el-form-item label="班级ID" v-if="addForm.role === 'student'">
-          <el-input-number v-model="addForm.classId" :min="1" controls-position="right" style="width:100%" />
+        <template v-if="addForm.role === 'student'">
+          <el-form-item label="年级">
+            <el-select v-model="addForm.grade" placeholder="请选择年级" clearable style="width:100%">
+              <el-option v-for="grade in gradeOptions" :key="grade" :label="grade" :value="grade" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="学院">
+            <el-select v-model="addForm.department" placeholder="请选择学院" clearable style="width:100%">
+              <el-option v-for="department in departmentOptions" :key="department" :label="department" :value="department" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="专业">
+            <el-select v-model="addForm.major" placeholder="请选择专业" clearable style="width:100%">
+              <el-option v-for="major in majorOptions" :key="major" :label="major" :value="major" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="班级">
+            <el-select v-model="addForm.classId" placeholder="请选择班级" clearable style="width:100%">
+              <el-option v-for="cls in classOptions" :key="cls.classId" :label="cls.className" :value="cls.classId" />
+            </el-select>
+          </el-form-item>
+          <div style="margin-top:-10px; margin-bottom: 12px; color: var(--text-secondary); font-size: 12px;">
+            学号前四位若为年份，将自动优先匹配对应年级。
+          </div>
+        </template>
+        <el-form-item label="所属学院" v-else-if="addForm.role === 'teacher'">
+          <el-select v-model="addForm.department" placeholder="请选择学院" clearable style="width:100%">
+            <el-option v-for="department in allDepartmentOptions" :key="department" :label="department" :value="department" />
+          </el-select>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -166,6 +185,33 @@
         <el-form-item label="联系电话">
           <el-input v-model="editForm.phone" />
         </el-form-item>
+        <template v-if="editForm.role === 'student'">
+          <el-form-item label="年级">
+            <el-select v-model="editForm.grade" placeholder="请选择年级" clearable style="width:100%">
+              <el-option v-for="grade in gradeOptions" :key="grade" :label="grade" :value="grade" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="学院">
+            <el-select v-model="editForm.department" placeholder="请选择学院" clearable style="width:100%">
+              <el-option v-for="department in editDepartmentOptions" :key="department" :label="department" :value="department" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="专业">
+            <el-select v-model="editForm.major" placeholder="请选择专业" clearable style="width:100%">
+              <el-option v-for="major in editMajorOptions" :key="major" :label="major" :value="major" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="班级">
+            <el-select v-model="editForm.classId" placeholder="请选择班级" clearable style="width:100%">
+              <el-option v-for="cls in editClassOptions" :key="cls.classId" :label="cls.className" :value="cls.classId" />
+            </el-select>
+          </el-form-item>
+        </template>
+        <el-form-item label="所属学院" v-else-if="editForm.role === 'teacher'">
+          <el-select v-model="editForm.department" placeholder="请选择学院" clearable style="width:100%">
+            <el-option v-for="department in allDepartmentOptions" :key="department" :label="department" :value="department" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="账号状态">
           <el-switch v-model="editForm.status" :active-value="1" :inactive-value="0" active-text="启用" inactive-text="禁用" />
         </el-form-item>
@@ -176,19 +222,10 @@
       </template>
     </el-dialog>
   </div>
-      <el-form-item label="账号状态">
-        <el-switch v-model="editForm.status" :active-value="1" :inactive-value="0" active-text="启用" inactive-text="禁用" />
-      </el-form-item>
-    </el-form>
-    <template #footer>
-      <el-button @click="editDialogVisible = false">取消</el-button>
-      <el-button type="primary" @click="submitEdit">保存修改</el-button>
-    </template>
-  </el-dialog>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import request from '@/utils/request'
 
@@ -198,8 +235,10 @@ const filters = ref({ keyword: '', status: '', grade: '', college: '', major: ''
 // Edit dialog state
 const editDialogVisible = ref(false)
 const addDialogVisible = ref(false)
-const editForm = ref({ userId: null, username: '', realName: '', phone: '', status: 1 })
-const addForm = ref({ username: '', password: '123456', realName: '', phone: '', role: '', classId: null, status: 1 })
+const editForm = ref({ userId: null, username: '', realName: '', phone: '', status: 1, role: '', classId: null, grade: '', department: '', major: '' })
+const addForm = ref({ username: '', password: '123456', realName: '', phone: '', role: '', classId: null, status: 1, grade: '', department: '', major: '' })
+const suppressEditCascadeReset = ref(false)
+const editFormPrefill = ref({ department: '', major: '', classId: null })
 
 const roles = ref([
   { id: 'student', name: '学生用户', count: '多', icon: 'el-icon-reading', color: 'rgba(56, 189, 248, 0.2)' },
@@ -208,23 +247,240 @@ const roles = ref([
 ])
 
 const allUsers = ref([])
+const allClasses = ref([])
+const earliestGradeYear = ref(2020)
+
+const inferGradeFromUsername = (username) => {
+  const matched = String(username || '').match(/^(20\d{2})/)
+  return matched ? `${matched[1]}级` : ''
+}
+
+const getGradeFromClass = (cls) => {
+  if (!cls?.createTime) return `${earliestGradeYear.value}级`
+  return `${new Date(cls.createTime).getFullYear()}级`
+}
+
+const gradeOptions = computed(() => {
+  const currentYear = new Date().getFullYear()
+  const startYear = Math.min(earliestGradeYear.value || 2020, currentYear)
+  return Array.from({ length: currentYear - startYear + 1 }, (_, index) => `${startYear + index}级`)
+})
+const allDepartmentOptions = computed(() => [...new Set(allClasses.value.map(item => item.department).filter(Boolean))])
+const allMajorOptions = computed(() => [...new Set(allClasses.value.map(item => item.major).filter(Boolean))])
+const departmentOptions = computed(() => {
+  return [...new Set(allClasses.value.map(item => item.department).filter(Boolean))]
+})
+const majorOptions = computed(() => {
+  const { department } = addForm.value
+  return [...new Set(allClasses.value
+    .filter(item => !department || item.department === department)
+    .map(item => item.major)
+    .filter(Boolean))]
+})
+const classOptions = computed(() => {
+  const { department, major } = addForm.value
+  return allClasses.value.filter(item =>
+    (!department || item.department === department) &&
+    (!major || item.major === major)
+  )
+})
+const classLabelOptions = computed(() => [...new Set(allClasses.value.map(item => item.className).filter(Boolean))])
+const editDepartmentOptions = computed(() => {
+  return [...new Set(allClasses.value.map(item => item.department).filter(Boolean))]
+})
+const editMajorOptions = computed(() => {
+  const { department } = editForm.value
+  return [...new Set(allClasses.value
+    .filter(item => !department || item.department === department)
+    .map(item => item.major)
+    .filter(Boolean))]
+})
+const editClassOptions = computed(() => {
+  const { department, major } = editForm.value
+  return allClasses.value.filter(item =>
+    (!department || item.department === department) &&
+    (!major || item.major === major)
+  )
+})
+
+const syncStudentGrade = () => {
+  if (addForm.value.role !== 'student') return
+
+  const inferredGrade = inferGradeFromUsername(addForm.value.username)
+  const currentYearGrade = `${new Date().getFullYear()}级`
+
+  if (inferredGrade && gradeOptions.value.includes(inferredGrade)) {
+    addForm.value.grade = inferredGrade
+    return
+  }
+
+  if (gradeOptions.value.includes(currentYearGrade)) {
+    addForm.value.grade = currentYearGrade
+    return
+  }
+
+  addForm.value.grade = gradeOptions.value[0] || ''
+}
+
+watch(() => addForm.value.username, (username) => {
+  if (addForm.value.role !== 'student') return
+  syncStudentGrade()
+})
+
+watch(gradeOptions, () => {
+  syncStudentGrade()
+})
+
+watch(() => addForm.value.grade, () => {
+  if (addForm.value.role !== 'student') return
+  addForm.value.department = ''
+  addForm.value.major = ''
+  addForm.value.classId = null
+})
+
+watch(() => addForm.value.department, () => {
+  if (addForm.value.role === 'student') {
+    addForm.value.major = ''
+    addForm.value.classId = null
+    return
+  }
+
+  if (addForm.value.role === 'teacher') {
+    const departmentClass = allClasses.value.find(item => item.department === addForm.value.department)
+    addForm.value.classId = departmentClass?.classId || null
+  }
+})
+
+watch(() => addForm.value.major, () => {
+  if (addForm.value.role !== 'student') return
+  addForm.value.classId = null
+})
+
+watch(() => addForm.value.role, (role) => {
+  addForm.value.classId = null
+  addForm.value.department = ''
+  addForm.value.major = ''
+  if (role === 'student') {
+    syncStudentGrade()
+  } else {
+    addForm.value.grade = ''
+  }
+})
+
+watch(() => editForm.value.grade, () => {
+  if (editForm.value.role !== 'student') return
+  if (suppressEditCascadeReset.value) return
+  editForm.value.department = ''
+  editForm.value.major = ''
+  editForm.value.classId = null
+  editFormPrefill.value = { department: '', major: '', classId: null }
+})
+
+watch(() => editForm.value.department, () => {
+  if (suppressEditCascadeReset.value) return
+  if (editForm.value.role === 'student') {
+    editForm.value.major = ''
+    editForm.value.classId = null
+    editFormPrefill.value.classId = null
+    return
+  }
+
+  if (editForm.value.role === 'teacher') {
+    const departmentClass = allClasses.value.find(item => item.department === editForm.value.department)
+    editForm.value.classId = departmentClass?.classId || null
+  }
+})
+
+watch(() => editForm.value.major, () => {
+  if (editForm.value.role !== 'student') return
+  if (suppressEditCascadeReset.value) return
+  editForm.value.classId = null
+  editFormPrefill.value.classId = null
+})
+
+watch(editDepartmentOptions, (options) => {
+  if (!editFormPrefill.value.department || !options.includes(editFormPrefill.value.department)) return
+  editForm.value.department = editFormPrefill.value.department
+})
+
+watch(editMajorOptions, (options) => {
+  if (!editFormPrefill.value.major || !options.includes(editFormPrefill.value.major)) return
+  editForm.value.major = editFormPrefill.value.major
+})
+
+watch(editClassOptions, (options) => {
+  if (!editFormPrefill.value.classId || !options.some(item => item.classId === editFormPrefill.value.classId)) return
+  editForm.value.classId = editFormPrefill.value.classId
+})
+
+const fetchRoleCounts = async () => {
+  try {
+    const [studentUsers, teacherUsers, adminUsers] = await Promise.all([
+      request.get('/admin/users?role=student'),
+      request.get('/admin/users?role=teacher'),
+      request.get('/admin/users?role=admin')
+    ])
+
+    roles.value = roles.value.map(role => ({
+      ...role,
+      count: role.id === 'student' ? studentUsers.length : (role.id === 'teacher' ? teacherUsers.length : adminUsers.length)
+    }))
+  } catch (e) {
+    ElMessage.error('获取用户统计失败')
+  }
+}
+
+const fetchClasses = async () => {
+  try {
+    allClasses.value = await request.get('/admin/classes')
+  } catch (e) {
+    ElMessage.error('获取班级信息失败')
+  }
+}
+
+const fetchGradeRange = async () => {
+  try {
+    const termSettings = await request.get('/admin/terms')
+    const termNames = (termSettings.terms || []).map(item => item.name)
+    const years = termNames
+      .map(name => Number(String(name).match(/^(20\d{2})-/)?.[1]))
+      .filter(year => !Number.isNaN(year))
+
+    if (years.length) {
+      earliestGradeYear.value = Math.min(...years)
+    }
+  } catch (e) {
+    earliestGradeYear.value = 2020
+  }
+}
 
 const fetchUsers = async () => {
   if (!currentRole.value) return;
   try {
     // Backend expects 'student', 'teacher', 'admin' - not ROLE_ prefix
     const res = await request.get(`/admin/users?role=${currentRole.value.id}`)
-    allUsers.value = res.map(u => ({
-      id: u.userId,
-      username: u.username,
-      realName: u.realName,
-      phone: u.phone || '',
-      role: currentRole.value.id,
-      college: u.classId ? `班级ID:${u.classId}` : '未分配',
-      className: u.classId ? `班级ID:${u.classId}` : '未分配',
-      status: u.status,
-      classId: u.classId
-    }))
+    allUsers.value = res.map(u => {
+      const classInfo = allClasses.value.find(item => item.classId === u.classId)
+      return {
+        id: u.userId,
+        username: u.username,
+        realName: u.realName,
+        phone: u.phone || '',
+        role: currentRole.value.id,
+        grade: classInfo ? getGradeFromClass(classInfo) : '',
+        department: classInfo?.department || '',
+        major: classInfo?.major || '',
+        classOnly: classInfo?.className || '',
+        college: classInfo?.department || '未分配',
+        className: classInfo
+          ? (currentRole.value.id === 'teacher'
+              ? classInfo.department
+              : `${getGradeFromClass(classInfo)} / ${classInfo.department} / ${classInfo.major} / ${classInfo.className}`)
+          : '未分配',
+        status: u.status,
+        classId: u.classId
+      }
+    })
   } catch(e) { 
     ElMessage.error('获取用户列表失败') 
   }
@@ -234,7 +490,11 @@ const filteredUsers = computed(() => {
   if (!currentRole.value) return []
   return allUsers.value.filter(u => {
     return (!filters.value.keyword || u.username.includes(filters.value.keyword) || u.realName.includes(filters.value.keyword)) &&
-           (filters.value.status === '' || u.status === filters.value.status)
+           (filters.value.status === '' || u.status === filters.value.status) &&
+           (!filters.value.grade || u.grade === filters.value.grade) &&
+           (!filters.value.college || u.department === filters.value.college) &&
+           (!filters.value.major || u.major === filters.value.major) &&
+           (!filters.value.class || u.classOnly === filters.value.class)
   })
 })
 
@@ -268,7 +528,10 @@ const toggleStatus = async (row) => {
 }
 
 const handleAddUser = () => {
-  addForm.value = { username: '', password: '123456', realName: '', phone: '', role: currentRole.value.id, classId: null, status: 1 }
+  addForm.value = { username: '', password: '123456', realName: '', phone: '', role: currentRole.value.id, classId: null, status: 1, grade: '', department: '', major: '' }
+  if (currentRole.value.id === 'student') {
+    syncStudentGrade()
+  }
   addDialogVisible.value = true
 }
 
@@ -277,10 +540,28 @@ const submitAddUser = async () => {
     ElMessage.error('账号和姓名为必填项')
     return
   }
+  if (addForm.value.role === 'student' && !addForm.value.classId) {
+    ElMessage.error('请为学生选择完整的年级、学院、专业和班级')
+    return
+  }
+  if (addForm.value.role === 'teacher' && !addForm.value.classId) {
+    ElMessage.error('请为教师选择所属学院')
+    return
+  }
   try {
-    await request.post('/admin/users', addForm.value)
+    const payload = {
+      username: addForm.value.username,
+      password: addForm.value.password,
+      realName: addForm.value.realName,
+      phone: addForm.value.phone,
+      role: addForm.value.role,
+      classId: addForm.value.role === 'student' ? addForm.value.classId : (addForm.value.role === 'teacher' ? addForm.value.classId : null),
+      status: addForm.value.status
+    }
+    await request.post('/admin/users', payload)
     ElMessage.success('用户添加成功')
     addDialogVisible.value = false
+    fetchRoleCounts()
     fetchUsers()
   } catch (e) {
     ElMessage.error('添加失败: ' + (e?.message || ''))
@@ -288,13 +569,48 @@ const submitAddUser = async () => {
 }
 
 const handleEdit = (row) => {
-  editForm.value = { userId: row.id, username: row.username, realName: row.realName, phone: row.phone, status: row.status }
+  suppressEditCascadeReset.value = true
+  editFormPrefill.value = {
+    department: row.department || '',
+    major: row.major || '',
+    classId: row.classId || null
+  }
+  editForm.value = {
+    userId: row.id,
+    username: row.username,
+    realName: row.realName,
+    phone: row.phone,
+    status: row.status,
+    role: row.role,
+    classId: row.classId,
+    grade: row.grade || '',
+    department: row.department || '',
+    major: row.major || ''
+  }
+  setTimeout(() => {
+    suppressEditCascadeReset.value = false
+  }, 0)
   editDialogVisible.value = true
 }
 
 const submitEdit = async () => {
   try {
-    await request.put('/admin/users', editForm.value)
+    if (editForm.value.role === 'student' && !editForm.value.classId) {
+      ElMessage.error('请为学生选择完整的年级、学院、专业和班级')
+      return
+    }
+    if (editForm.value.role === 'teacher' && !editForm.value.classId) {
+      ElMessage.error('请为教师选择所属学院')
+      return
+    }
+
+    await request.put('/admin/users', {
+      userId: editForm.value.userId,
+      realName: editForm.value.realName,
+      phone: editForm.value.phone,
+      status: editForm.value.status,
+      classId: editForm.value.role === 'admin' ? null : editForm.value.classId
+    })
     ElMessage.success('用户信息已更新')
     editDialogVisible.value = false
     fetchUsers()
@@ -327,11 +643,18 @@ const handleDelete = (row) => {
       await request.delete(`/admin/users/${row.id}`)
       allUsers.value = allUsers.value.filter(u => u.id !== row.id)
       ElMessage.success('用户已成功删除。')
+      fetchRoleCounts()
     } catch(e) {
       ElMessage.error('删除失败')
     }
   }).catch(() => {})
 }
+
+onMounted(async () => {
+  await fetchClasses()
+  await fetchGradeRange()
+  await fetchRoleCounts()
+})
 </script>
 
 <style scoped>

@@ -326,9 +326,47 @@ public class TeacherServiceImpl implements TeacherService {
 
     @Override
     public List<Map<String, Object>> getGradingAnswers(Integer recordId) {
+        StudentExamRecord record = recordMapper.selectById(recordId);
+        if (record == null) {
+            return new ArrayList<>();
+        }
+
+        ExamArrangement exam = examMapper.selectById(record.getExamId());
+        if (exam == null) {
+            return new ArrayList<>();
+        }
+
+        QueryWrapper<PaperQuestionRel> relWrapper = new QueryWrapper<>();
+        relWrapper.eq("paper_id", exam.getPaperId()).orderByAsc("sort_order");
+        List<PaperQuestionRel> paperRels = relMapper.selectList(relWrapper);
+
         QueryWrapper<StudentAnswerDetail> w = new QueryWrapper<>();
         w.eq("record_id", recordId);
         List<StudentAnswerDetail> details = answerDetailMapper.selectList(w);
+        Map<Integer, StudentAnswerDetail> detailByQuestionId = new HashMap<>();
+        for (StudentAnswerDetail detail : details) {
+            detailByQuestionId.put(detail.getQuestionId(), detail);
+        }
+
+        for (PaperQuestionRel rel : paperRels) {
+            QuestionBank question = questionMapper.selectById(rel.getQuestionId());
+            if (question == null || !("简答题".equals(question.getType()) || "填空题".equals(question.getType()))) {
+                continue;
+            }
+
+            if (!detailByQuestionId.containsKey(rel.getQuestionId())) {
+                StudentAnswerDetail missingDetail = new StudentAnswerDetail();
+                missingDetail.setRecordId(recordId);
+                missingDetail.setQuestionId(rel.getQuestionId());
+                missingDetail.setAnswerContent("");
+                missingDetail.setIsCorrect(null);
+                missingDetail.setScore(0);
+                answerDetailMapper.insert(missingDetail);
+                detailByQuestionId.put(rel.getQuestionId(), missingDetail);
+            }
+        }
+
+        details = new ArrayList<>(detailByQuestionId.values());
         
         List<Map<String, Object>> res = new ArrayList<>();
         for (StudentAnswerDetail d : details) {
@@ -336,6 +374,11 @@ public class TeacherServiceImpl implements TeacherService {
             if (q == null) continue;
             // Only include subjective questions that need manual grading
             if ("简答题".equals(q.getType()) || "填空题".equals(q.getType())) {
+                int maxScore = 15;
+                PaperQuestionRel rel = paperRels.stream().filter(item -> item.getQuestionId().equals(d.getQuestionId())).findFirst().orElse(null);
+                if (rel != null && rel.getScore() != null) {
+                    maxScore = rel.getScore();
+                }
                 Map<String, Object> item = new HashMap<>();
                 item.put("detailId", d.getDetailId());
                 item.put("questionTitle", q.getTitle());
@@ -343,7 +386,7 @@ public class TeacherServiceImpl implements TeacherService {
                 item.put("referenceAnswer", q.getAnswer());
                 item.put("studentAnswer", d.getAnswerContent());
                 item.put("score", d.getScore());
-                item.put("maxScore", 15); // Simplified, should come from paper_question_rel
+                item.put("maxScore", maxScore);
                 res.add(item);
             }
         }

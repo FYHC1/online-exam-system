@@ -1,0 +1,41 @@
+[ {
+  "archived" : false,
+  "majors" : [ {
+    "classes" : [ {
+      "name" : "软件工程1班",
+      "count" : 45
+    }, {
+      "name" : "软件工程2班",
+      "count" : 47
+    } ],
+    "name" : "软件工程"
+  }, {
+    "classes" : [ ],
+    "name" : "人工智能"
+  }, {
+    "classes" : [ {
+      "name" : "计科1班",
+      "count" : 40
+    } ],
+    "name" : "计算机科学与技术"
+  } ],
+  "name" : "计算机与信息学院"
+}, {
+  "archived" : false,
+  "majors" : [ {
+    "classes" : [ {
+      "name" : "数学1班",
+      "count" : 39
+    } ],
+    "name" : "数学与应用数学"
+  } ],
+  "name" : "理学院"
+}, {
+  "archived" : true,
+  "majors" : [ ],
+  "name" : "历史归档院系"
+}, {
+  "archived" : false,
+  "majors" : [ ],
+  "name" : "人工智能学院"
+} ]

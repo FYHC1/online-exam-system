@@ -67,15 +67,57 @@
         </el-form-item>
 
         <div class="form-footer" v-if="form.role === 'student'">
-          还没有账号？<a href="javascript:void(0)" @click="showMessage('目前暂未开放自助注册')">立即注册</a>
+          还没有账号？<a href="javascript:void(0)" @click="openRegisterDialog">立即注册</a>
         </div>
       </el-form>
     </div>
+
+    <el-dialog v-model="registerVisible" title="学生注册" width="560px">
+      <el-form :model="registerForm" label-position="top">
+        <el-form-item label="学号">
+          <el-input v-model="registerForm.username" placeholder="请输入学校下发的学号" />
+        </el-form-item>
+        <el-form-item label="真实姓名">
+          <el-input v-model="registerForm.realName" placeholder="请输入真实姓名" />
+        </el-form-item>
+        <el-form-item label="登录密码">
+          <el-input v-model="registerForm.password" type="password" show-password placeholder="请设置登录密码" />
+        </el-form-item>
+        <el-form-item label="确认密码">
+          <el-input v-model="registerForm.confirmPassword" type="password" show-password placeholder="请再次输入登录密码" />
+        </el-form-item>
+        <el-form-item label="年级">
+          <el-select v-model="registerForm.grade" style="width: 100%" placeholder="请选择年级">
+            <el-option v-for="grade in registerGrades" :key="grade" :label="grade" :value="grade" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="学院">
+          <el-select v-model="registerForm.department" style="width: 100%" placeholder="请选择学院">
+            <el-option v-for="department in registerDepartments" :key="department" :label="department" :value="department" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="专业">
+          <el-select v-model="registerForm.major" style="width: 100%" placeholder="请选择专业">
+            <el-option v-for="major in registerMajors" :key="major" :label="major" :value="major" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="班级">
+          <el-select v-model="registerForm.classId" style="width: 100%" placeholder="请选择班级">
+            <el-option v-for="cls in registerClassOptions" :key="cls.classId" :label="cls.className" :value="cls.classId" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+
+      <template #footer>
+        <el-button @click="registerVisible = false">取消</el-button>
+        <el-button type="primary" :loading="registerLoading" @click="submitRegister">确认注册</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import request from '@/utils/request'
@@ -84,6 +126,10 @@ const router = useRouter()
 const formRef = ref(null)
 const loading = ref(false)
 const captchaImg = ref('')
+const registerVisible = ref(false)
+const registerLoading = ref(false)
+const registerClasses = ref([])
+const registerGrades = ref([])
 
 const form = reactive({
   username: '',
@@ -91,6 +137,51 @@ const form = reactive({
   role: 'student',
   code: '',
   uuid: ''
+})
+
+const registerForm = reactive({
+  username: '',
+  password: '',
+  confirmPassword: '',
+  realName: '',
+  grade: '',
+  department: '',
+  major: '',
+  classId: null,
+  className: ''
+})
+
+const registerDepartments = computed(() => [...new Set(registerClasses.value.map(item => item.department).filter(Boolean))])
+const registerMajors = computed(() => [...new Set(registerClasses.value.filter(item => !registerForm.department || item.department === registerForm.department).map(item => item.major).filter(Boolean))])
+const registerClassOptions = computed(() => registerClasses.value.filter(item => (!registerForm.department || item.department === registerForm.department) && (!registerForm.major || item.major === registerForm.major)))
+
+watch(() => registerForm.username, (username) => {
+  const matched = String(username || '').match(/^(20\d{2})/)
+  const inferredGrade = matched ? `${matched[1]}级` : ''
+  if (inferredGrade && registerGrades.value.includes(inferredGrade)) {
+    registerForm.grade = inferredGrade
+    return
+  }
+  const currentYearGrade = `${new Date().getFullYear()}级`
+  if (registerGrades.value.includes(currentYearGrade)) {
+    registerForm.grade = currentYearGrade
+  }
+})
+
+watch(() => registerForm.department, () => {
+  registerForm.major = ''
+  registerForm.classId = null
+  registerForm.className = ''
+})
+
+watch(() => registerForm.major, () => {
+  registerForm.classId = null
+  registerForm.className = ''
+})
+
+watch(() => registerForm.classId, (classId) => {
+  const selectedClass = registerClassOptions.value.find(item => String(item.classId) === String(classId))
+  registerForm.className = selectedClass?.className || ''
 })
 
 const rules = {
@@ -117,6 +208,60 @@ onMounted(() => {
 
 const showMessage = (msg) => {
   ElMessage.info(msg)
+}
+
+const openRegisterDialog = async () => {
+  try {
+    const res = await request.get('/auth/register/options')
+    registerClasses.value = res.classes || []
+    registerGrades.value = res.grades || []
+    Object.assign(registerForm, {
+      username: '',
+      password: '',
+      confirmPassword: '',
+      realName: '',
+      grade: registerGrades.value[0] || '',
+      department: '',
+      major: '',
+      classId: null,
+      className: ''
+    })
+    registerVisible.value = true
+  } catch (e) {
+    ElMessage.error('获取注册信息失败')
+  }
+}
+
+const submitRegister = async () => {
+  if (!registerForm.username || !registerForm.password || !registerForm.realName || !registerForm.classId) {
+    ElMessage.error('请完整填写注册信息')
+    return
+  }
+  if (registerForm.password !== registerForm.confirmPassword) {
+    ElMessage.error('两次输入的密码不一致')
+    return
+  }
+
+  registerLoading.value = true
+  try {
+    await request.post('/auth/register', {
+      username: registerForm.username,
+      password: registerForm.password,
+      realName: registerForm.realName,
+      role: 'student',
+      classId: registerForm.classId,
+      className: registerForm.className,
+      grade: registerForm.grade,
+      department: registerForm.department,
+      major: registerForm.major
+    })
+    registerVisible.value = false
+    ElMessage.success('注册申请已提交，请等待管理员启用账号后再登录')
+  } catch (e) {
+    ElMessage.error(e?.message || '注册失败')
+  } finally {
+    registerLoading.value = false
+  }
 }
 
 const handleLogin = () => {
