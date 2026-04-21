@@ -13,7 +13,7 @@
         <el-menu-item index="/admin/dashboard"><i class="el-icon-odometer" style="margin-right: 8px;"></i>平台总览</el-menu-item>
         <el-menu-item index="/admin/users"><i class="el-icon-user" style="margin-right: 8px;"></i>用户管理</el-menu-item>
         <el-menu-item index="/admin/announcements"><i class="el-icon-bell" style="margin-right: 8px;"></i>公告资讯</el-menu-item>
-        <el-menu-item index="/admin/resources"><i class="el-icon-folder-opened" style="margin-right: 8px;"></i>全域资源</el-menu-item>
+        <el-menu-item index="/admin/resources"><i class="el-icon-folder-opened" style="margin-right: 8px;"></i>题库与考试</el-menu-item>
         <el-menu-item index="/admin/analytics"><i class="el-icon-data-analysis" style="margin-right: 8px;"></i>数据监控</el-menu-item>
         <el-menu-item index="/admin/settings"><i class="el-icon-setting" style="margin-right: 8px;"></i>系统配置</el-menu-item>
       </el-menu>

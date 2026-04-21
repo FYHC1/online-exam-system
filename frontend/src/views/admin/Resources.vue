@@ -2,8 +2,8 @@
   <div class="admin-resources">
     <div class="glass-card mb-4 header-card">
       <div>
-        <h2>全域资源</h2>
-        <p>统一查看平台题库资源与历史试卷快照，便于按学科、所属院系和考试状态进行审计与维护。</p>
+        <h2>题库与考试</h2>
+        <p>统一管理平台题库资源、题库分类与考试试卷，便于按学科、所属院系和考试状态进行维护。</p>
       </div>
       <div class="summary-grid">
         <div class="summary-item">
@@ -107,7 +107,7 @@
           </div>
         </el-tab-pane>
 
-        <el-tab-pane label="历史试卷" name="exams">
+        <el-tab-pane label="考试管理" name="exams">
           <div class="pane-body">
             <el-form :inline="true" :model="eFilters" class="mb-4">
               <el-form-item label="试卷名称：">
@@ -379,7 +379,7 @@ const fetchResources = async () => {
     questionPage.value = 1
     examPage.value = 1
   } catch (e) {
-    ElMessage.error('获取全域资源失败')
+    ElMessage.error('获取题库与考试数据失败')
   }
 }
 

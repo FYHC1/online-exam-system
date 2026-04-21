@@ -302,8 +302,16 @@ const deriveExamStatus = (exam) => {
   const startTime = exam.startTime ? new Date(exam.startTime).getTime() : null
   const endTime = exam.endTime ? new Date(exam.endTime).getTime() : null
 
-  if (exam.status === 'cancelled') {
+  if (['cancelled', 'finished', 'grading', 'abnormal'].includes(exam.status)) {
     return '已结束'
+  }
+
+  if (exam.status === 'pending' && startTime && now < startTime) {
+    return '未开始'
+  }
+
+  if (exam.status === 'running') {
+    return '进行中'
   }
 
   if (endTime && now >= endTime) {
@@ -447,8 +455,8 @@ const handleMonitor = (row) => {
 const handleTerminate = (row) => {
   ElMessageBox.confirm('是否立即终止该场考试？交卷通道将被强制关闭！', '高危操作', { type: 'error' }).then(async () => {
     try {
-      await request.put(`/teacher/exams/${row.id}/status?status=grading`)
-      row.status = '已结束'
+      await request.put(`/teacher/exams/${row.id}/status?status=finished`)
+      await fetchExams()
       ElMessage.success('考试已强制终止，试卷进入锁定状态。')
     } catch(e) { ElMessage.error('操作失败') }
   }).catch(() => {})
@@ -471,7 +479,7 @@ const handleCancel = (row) => {
   ElMessageBox.confirm('确定要取消并销毁该场考试安排吗？此操作不可逆！', '警告', { type: 'warning' }).then(async () => {
     try {
       await request.put(`/teacher/exams/${row.id}/status?status=cancelled`)
-      allExams.value = allExams.value.filter(e => e.id !== row.id)
+      await fetchExams()
       ElMessage.success('考试任务已被撤销。')
     } catch(e) { ElMessage.error('操作失败') }
   }).catch(() => {})

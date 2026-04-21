@@ -18,6 +18,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
 
 @Service
@@ -44,6 +45,43 @@ public class AdminServiceImpl implements AdminService {
     private PaperQuestionRelMapper paperQuestionRelMapper;
     @Autowired
     private ObjectMapper objectMapper;
+
+    private SysClass resolveClass(String classToken) {
+        if (classToken == null || classToken.isBlank()) {
+            return null;
+        }
+
+        String normalizedToken = classToken.trim();
+        List<String> candidateNames = new ArrayList<>();
+        candidateNames.add(normalizedToken);
+        if (normalizedToken.startsWith("软件") && !normalizedToken.contains("工程")) {
+            candidateNames.add(normalizedToken.replaceFirst("软件", "软件工程"));
+        }
+
+        try {
+            return classMapper.selectById(Integer.parseInt(normalizedToken));
+        } catch (NumberFormatException ignored) {
+            for (String candidate : candidateNames) {
+                QueryWrapper<SysClass> wrapper = new QueryWrapper<>();
+                wrapper.eq("class_name", candidate).last("LIMIT 1");
+                SysClass exact = classMapper.selectOne(wrapper);
+                if (exact != null) {
+                    return exact;
+                }
+            }
+
+            for (String candidate : candidateNames) {
+                QueryWrapper<SysClass> fuzzyWrapper = new QueryWrapper<>();
+                fuzzyWrapper.like("class_name", candidate).last("LIMIT 1");
+                SysClass fuzzy = classMapper.selectOne(fuzzyWrapper);
+                if (fuzzy != null) {
+                    return fuzzy;
+                }
+            }
+
+            return null;
+        }
+    }
 
     private List<Map<String, Object>> defaultOrgStructure() {
         List<Map<String, Object>> departments = new ArrayList<>();
@@ -208,12 +246,9 @@ public class AdminServiceImpl implements AdminService {
                     ExamArrangement relatedExam = examMapper.selectOne(examWrapper);
                     if (relatedExam != null && relatedExam.getTargetClasses() != null) {
                         String firstClassId = relatedExam.getTargetClasses().split(",")[0].trim();
-                        try {
-                            SysClass sysClass = classMapper.selectById(Integer.parseInt(firstClassId));
-                            if (sysClass != null) {
-                                department = sysClass.getDepartment();
-                            }
-                        } catch (NumberFormatException ignored) {
+                        SysClass sysClass = resolveClass(firstClassId);
+                        if (sysClass != null) {
+                            department = sysClass.getDepartment();
                         }
                     }
                 }
@@ -239,20 +274,21 @@ public class AdminServiceImpl implements AdminService {
             String college = "未指定院系";
             if (exam.getTargetClasses() != null && !exam.getTargetClasses().isBlank()) {
                 String firstClassId = exam.getTargetClasses().split(",")[0].trim();
-                try {
-                    SysClass sysClass = classMapper.selectById(Integer.parseInt(firstClassId));
-                    if (sysClass != null) {
-                        college = sysClass.getDepartment();
-                    }
-                } catch (NumberFormatException ignored) {
+                SysClass sysClass = resolveClass(firstClassId);
+                if (sysClass != null) {
+                    college = sysClass.getDepartment();
                 }
             }
             item.put("college", college);
 
             String status = "未开始";
             java.util.Date now = new java.util.Date();
-            if (exam.getEndTime() != null && !now.before(exam.getEndTime())) {
+            if (Arrays.asList("cancelled", "finished", "grading", "abnormal").contains(exam.getStatus())) {
                 status = "已结束";
+            } else if (exam.getEndTime() != null && !now.before(exam.getEndTime())) {
+                status = "已结束";
+            } else if ("pending".equals(exam.getStatus()) && exam.getStartTime() != null && now.before(exam.getStartTime())) {
+                status = "未开始";
             } else if (exam.getStartTime() != null && !now.before(exam.getStartTime())) {
                 status = "进行中";
             }

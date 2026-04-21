@@ -49,7 +49,7 @@ const routes = [
       { path: 'dashboard', name: 'AdminDashboard', component: () => import('../views/admin/Dashboard.vue'), meta: { title: '系统总览' } },
       { path: 'users', name: 'AdminUsers', component: () => import('../views/admin/Users.vue'), meta: { title: '用户管理' } },
       { path: 'announcements', name: 'AdminAnnouncements', component: () => import('../views/admin/Announcements.vue'), meta: { title: '公告管理' } },
-      { path: 'resources', name: 'AdminResources', component: () => import('../views/admin/Resources.vue'), meta: { title: '全域资源池' } },
+      { path: 'resources', name: 'AdminResources', component: () => import('../views/admin/Resources.vue'), meta: { title: '题库与考试' } },
       { path: 'analytics', name: 'AdminAnalytics', component: () => import('../views/admin/Analytics.vue'), meta: { title: '全局数据监控' } },
       { path: 'settings', name: 'AdminSettings', component: () => import('../views/admin/Settings.vue'), meta: { title: '系统配置' } },
     ]
