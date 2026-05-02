@@ -14,19 +14,31 @@ public interface AdminService {
      * Dashboard stats
      */
     Map<String, Object> getDashboardStats();
+    Map<String, Object> getAnalyticsStats();
 
     /**
      * User Management
      */
     List<SysUser> getUsers(String role, String keyword);
     List<Map<String, Object>> getGlobalQuestions();
+    List<String> getSubjectCategories();
+    void addSubjectCategory(String subject);
+    List<Map<String, Object>> getQuestionBanks();
+    void addQuestionBank(Map<String, Object> payload);
+    void updateQuestionBank(String id, Map<String, Object> payload);
+    void deleteQuestionBank(String id);
     List<Map<String, Object>> getGlobalExams();
     List<Map<String, Object>> getOrgStructure();
     Map<String, Object> getTermSettings();
     void addTerm(Map<String, Object> payload);
     void updateCurrentTerm(Map<String, Object> payload);
+    List<Map<String, Object>> getLoginCarousels(boolean enabledOnly);
+    void addLoginCarousel(Map<String, Object> payload);
+    void updateLoginCarousel(String id, Map<String, Object> payload);
+    void deleteLoginCarousel(String id);
     void addOrgNode(Map<String, Object> payload);
     void updateOrgNode(Map<String, Object> payload);
+    void deleteOrgNode(Map<String, Object> payload);
     Map<String, Object> getGlobalQuestionDetail(Integer questionId);
     void addGlobalQuestion(QuestionBank question, Integer createBy);
     void deleteGlobalQuestion(Integer questionId);

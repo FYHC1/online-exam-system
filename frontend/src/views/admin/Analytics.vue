@@ -1,139 +1,238 @@
 <template>
   <div class="admin-analytics">
-    <div class="glass-card mb-4" style="padding: 20px; display:flex; justify-content:space-between; align-items:center;">
+    <div class="glass-card header-card mb-4">
       <div>
-        <h2>全局数据监控与视图分析</h2>
-        <p style="color: var(--text-secondary); margin-top: 8px;">汇总查看全校级综合考试报告、学科之间通过率对比图表及各院系统计排行概览。</p>
+        <h2>数据监控</h2>
+        <p>查看考试、成绩、题库和异常记录，帮助管理员快速发现需要处理的问题。</p>
       </div>
-      <div>
-        <el-button type="primary" plain icon="el-icon-download">导出完整数据分析报告 (PDF)</el-button>
-      </div>
+      <el-button type="primary" plain :loading="loading" @click="fetchAnalytics">刷新数据</el-button>
     </div>
 
-    <!-- 图表矩阵 -->
-    <el-row :gutter="20">
-      <el-col :span="16">
-        <div class="glass-card p-4 mb-4">
-          <div class="chart-header">
-            <h3>校级期末主干课程通过率统计图</h3>
-            <el-select size="small" style="width: 120px;" placeholder="23-24 秋季">
-              <el-option label="23-24 秋季" value="23-24 秋" />
-              <el-option label="22-23 春季" value="22-23 春" />
-            </el-select>
-          </div>
-          <div class="mock-large-chart">
-            <div class="chart-axis-y">
-              <span>100%</span>
-              <span>80%</span>
-              <span>60%</span>
-              <span>40%</span>
-              <span>20%</span>
-              <span>0%</span>
-            </div>
-            <div class="chart-grid">
-              <div class="bar-col">
-                <div class="bar-inner" style="height: 85%; background: var(--success-color);"></div>
-                <div class="bar-label">高等数学</div>
-              </div>
-              <div class="bar-col">
-                <div class="bar-inner" style="height: 92%; background: var(--primary-color);"></div>
-                <div class="bar-label">大学英语</div>
-              </div>
-              <div class="bar-col">
-                <div class="bar-inner" style="height: 65%; background: var(--warning-color);"></div>
-                <div class="bar-label">大学物理</div>
-              </div>
-              <div class="bar-col">
-                <div class="bar-inner" style="height: 78%; background: var(--primary-color);"></div>
-                <div class="bar-label">计算机基础</div>
-              </div>
-              <div class="bar-col">
-                <div class="bar-inner" style="height: 98%; background: var(--success-color);"></div>
-                <div class="bar-label">思政理论课</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </el-col>
-      
-      <el-col :span="8">
-        <div class="glass-card p-4 mb-4" style="height: calc(100% - 20px);">
-          <h3 style="margin-top:0;">各学院本月考试活跃度排行</h3>
-          <ul class="rank-list">
-            <li v-for="(item, index) in rankings" :key="index">
-              <span class="rank-num" :class="{'top3': index < 3}">{{ index + 1 }}</span>
-              <span class="rank-name">{{ item.name }}</span>
-              <span class="rank-score">{{ item.score }} 分</span>
-            </li>
-          </ul>
+    <el-row :gutter="20" class="mb-4">
+      <el-col :span="6" v-for="item in summaryCards" :key="item.label">
+        <div class="glass-card stat-card">
+          <div class="stat-label">{{ item.label }}</div>
+          <div class="stat-value">{{ item.value }}</div>
+          <div class="stat-desc">{{ item.desc }}</div>
         </div>
       </el-col>
     </el-row>
 
-    <!-- 离散点数据与异变侦测 (Anomaly Detection) -->
+    <el-row :gutter="20" class="mb-4">
+      <el-col :span="16">
+        <div class="glass-card p-4 panel-card">
+          <div class="panel-header">
+            <div>
+              <h3>学科通过情况</h3>
+              <p>按学科统计考试数量、提交数量、平均分和通过率。</p>
+            </div>
+          </div>
+          <el-table :data="subjects" class="custom-table" style="width: 100%">
+            <el-table-column prop="subject" label="学科" min-width="140" />
+            <el-table-column prop="examCount" label="考试数" width="90" align="center" />
+            <el-table-column prop="recordCount" label="提交数" width="90" align="center" />
+            <el-table-column prop="avgScore" label="平均分" width="90" align="center" />
+            <el-table-column label="通过率" min-width="180">
+              <template #default="scope">
+                <el-progress :percentage="Number(scope.row.passRate || 0)" :color="getRateColor(scope.row.passRate)" />
+              </template>
+            </el-table-column>
+          </el-table>
+          <el-empty v-if="!subjects.length && !loading" description="暂无学科数据" :image-size="80" />
+        </div>
+      </el-col>
+
+      <el-col :span="8">
+        <div class="glass-card p-4 panel-card">
+          <div class="panel-header compact">
+            <h3>学院考试量</h3>
+            <p>按考试目标班级所属学院统计。</p>
+          </div>
+          <ul class="rank-list">
+            <li v-for="(item, index) in departments" :key="item.department">
+              <span class="rank-num" :class="{ top3: index < 3 }">{{ index + 1 }}</span>
+              <span class="rank-name">{{ item.department }}</span>
+              <span class="rank-score">{{ item.examCount }} 场</span>
+            </li>
+          </ul>
+          <el-empty v-if="!departments.length && !loading" description="暂无学院数据" :image-size="80" />
+        </div>
+      </el-col>
+    </el-row>
+
     <div class="glass-card p-4">
-      <h3 style="margin-top:0; border-bottom:1px dashed var(--glass-border); padding-bottom:12px; color:var(--danger-color);">考试异常作弊与异动指标监控清单</h3>
-      <p style="font-size:13px; color:var(--text-secondary); margin-bottom: 16px;">利用系统防作弊模型计算捕获的考试极高雷同率或答题用时畸少的不正常记录。</p>
-      
-      <el-table :data="anomalies" class="custom-table" border="false">
-        <el-table-column prop="rid" label="所属考试流水" width="160" />
-        <el-table-column prop="student" label="相关学生身份" width="120" />
-        <el-table-column prop="reason" label="被判定为异常的主因" show-overflow-tooltip />
-        <el-table-column prop="severity" label="作弊嫌疑等级" width="140">
+      <div class="panel-header">
+        <div>
+          <h3>需关注记录</h3>
+          <p>列出异常结束或低于及格线的记录，便于管理员跟进复核、补考或教学反馈。</p>
+        </div>
+        <el-tag type="warning">{{ attentionRecords.length }} 条</el-tag>
+      </div>
+      <el-table :data="attentionRecords" class="custom-table" style="width: 100%">
+        <el-table-column prop="recordId" label="记录编号" width="100" />
+        <el-table-column prop="exam" label="考试" min-width="180" show-overflow-tooltip />
+        <el-table-column prop="student" label="学生" width="120" />
+        <el-table-column prop="score" label="分数" width="90" align="center">
+          <template #default="scope">{{ scope.row.score ?? '待批阅' }}</template>
+        </el-table-column>
+        <el-table-column prop="status" label="情况" width="120">
           <template #default="scope">
-            <el-progress :percentage="scope.row.severity" status="exception" />
+            <el-tag :type="scope.row.status === '异常结束' ? 'danger' : 'warning'" size="small">{{ scope.row.status }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="后续处理动作" width="150" align="center">
-          <template #default="scope">
-            <el-button link type="danger" size="small">提交通报并作废</el-button>
-          </template>
-        </el-table-column>
+        <el-table-column prop="reason" label="建议处理" min-width="220" show-overflow-tooltip />
       </el-table>
+      <el-empty v-if="!attentionRecords.length && !loading" description="暂无需关注记录" :image-size="80" />
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { ElMessage } from 'element-plus'
+import request from '@/utils/request'
 
-const rankings = ref([
-  { name: '计算机与信息工程学院', score: 9845 },
-  { name: '外国语先锋语言学院', score: 8521 },
-  { name: '理学院 (应用数理系)', score: 7920 },
-  { name: '商管经贸与物流学院', score: 6200 },
-  { name: '土木与建筑工程学院', score: 4801 },
-  { name: '传媒人文与艺术修养系', score: 3822 },
+const loading = ref(false)
+const summary = ref({})
+const subjects = ref([])
+const departments = ref([])
+const attentionRecords = ref([])
+
+const summaryCards = computed(() => [
+  { label: '学生人数', value: summary.value.studentCount || 0, desc: '当前可参与考试的学生账号' },
+  { label: '考试总数', value: summary.value.examCount || 0, desc: '平台已创建的考试安排' },
+  { label: '答卷提交', value: summary.value.submittedCount || 0, desc: '学生已提交的考试记录' },
+  { label: '平均分', value: `${Number(summary.value.avgScore || 0).toFixed(1)} 分`, desc: `通过率 ${Number(summary.value.passRate || 0).toFixed(1)}%` },
+  { label: '待批阅', value: summary.value.gradingCount || 0, desc: '需要教师处理的主观题记录' },
+  { label: '异常记录', value: summary.value.abnormalCount || 0, desc: '异常结束或需人工复核的记录' },
+  { label: '题库题目', value: summary.value.questionCount || 0, desc: '当前题库中可用题目数量' },
+  { label: '教师人数', value: summary.value.teacherCount || 0, desc: '当前教师账号数量' }
 ])
 
-const anomalies = ref([
-  { rid: 'EXM-2100A', student: '赵四 (23级)', reason: '整张试卷交卷耗时过短，仅历时2分15秒即取得全对高分', severity: 99 },
-  { rid: 'EXM-2155F', student: '批量机房群', reason: '大量终端IP特征高度集中重叠，有组织代考舞弊违纪嫌疑', severity: 88 },
-  { rid: 'EXM-3211C', student: '李华 (22级)', reason: '客观题部分提交频率和时间间隔严格规律，疑似使用脚本', severity: 75 },
-])
+const getRateColor = (rate) => {
+  const value = Number(rate || 0)
+  if (value < 60) return 'var(--danger-color)'
+  if (value < 80) return 'var(--warning-color)'
+  return 'var(--success-color)'
+}
+
+const fetchAnalytics = async () => {
+  loading.value = true
+  try {
+    const data = await request.get('/admin/analytics')
+    summary.value = data.summary || {}
+    subjects.value = data.subjects || []
+    departments.value = data.departments || []
+    attentionRecords.value = data.attentionRecords || []
+  } catch (e) {
+    ElMessage.error('获取数据监控信息失败')
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(() => {
+  fetchAnalytics()
+})
 </script>
 
 <style scoped>
 .mb-4 { margin-bottom: 20px; }
 .p-4 { padding: 24px; }
 
-.chart-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px dashed var(--glass-border); padding-bottom: 12px; margin-bottom: 20px; }
-.chart-header h3 { margin: 0; }
+.header-card {
+  padding: 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+}
+.header-card p,
+.panel-header p,
+.stat-desc {
+  color: var(--text-secondary);
+}
+.header-card p,
+.panel-header p {
+  margin-top: 8px;
+}
 
-.mock-large-chart { display: flex; height: 250px; }
-.chart-axis-y { width: 40px; display: flex; flex-direction: column; justify-content: space-between; font-size: 12px; color: var(--text-secondary); text-align: right; padding-right: 10px; border-right: 1px solid var(--glass-border); }
-.chart-grid { flex: 1; display: flex; justify-content: space-around; align-items: flex-end; padding-top: 10px; }
-.bar-col { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; height: 100%; }
-.bar-inner { width: 40px; border-radius: 6px 6px 0 0; transition: height 0.8s ease-out; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
-.bar-label { margin-top: 10px; font-size: 13px; color: var(--text-secondary); font-weight: 500; }
+.stat-card {
+  padding: 20px;
+  min-height: 118px;
+}
+.stat-label {
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+.stat-value {
+  margin-top: 8px;
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--primary-color);
+}
+.stat-desc {
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+}
 
-.rank-list { padding: 0; margin: 0; list-style: none; }
-.rank-list li { display: flex; align-items: center; padding: 12px 0; border-bottom: 1px dashed rgba(255,255,255,0.1); }
+.panel-card {
+  min-height: 390px;
+}
+.panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px dashed var(--glass-border);
+  padding-bottom: 12px;
+  margin-bottom: 16px;
+}
+.panel-header.compact {
+  display: block;
+}
+.panel-header h3 {
+  margin: 0;
+}
+
+.rank-list {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+.rank-list li {
+  display: flex;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px dashed var(--glass-border);
+}
 .rank-list li:last-child { border-bottom: none; }
-.rank-num { width: 28px; height: 28px; border-radius: 50%; background: rgba(0,0,0,0.1); display: flex; align-items: center; justify-content: center; font-weight: bold; margin-right: 15px; color: var(--text-secondary); }
-.rank-num.top3 { background: var(--primary-color); color: white; box-shadow: 0 0 10px rgba(var(--primary-color-rgb), 0.5); }
-.rank-name { flex: 1; color: var(--text-primary); font-weight: 500; }
-.rank-score { font-weight: 600; color: var(--primary-color); }
+.rank-num {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  margin-right: 12px;
+  color: var(--text-secondary);
+}
+.rank-num.top3 {
+  background: var(--primary-color);
+  color: white;
+}
+.rank-name {
+  flex: 1;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+.rank-score {
+  font-weight: 600;
+  color: var(--primary-color);
+}
 
 :deep(.el-table) { background: transparent !important; }
 :deep(.el-table tr), :deep(.el-table td), :deep(.el-table th.el-table__cell) { background: transparent !important; }

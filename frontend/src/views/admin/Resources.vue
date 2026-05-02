@@ -24,9 +24,9 @@
             <div class="category-header standalone">
               <div>
                 <h3>题库分类</h3>
-                <p class="section-desc">按学科查看题库规模，并可一键跳转到对应题库资源列表。</p>
+                <p class="section-desc">按学科查看题库规模。一个学科可创建多个题库，题库可启用、停用或删除。</p>
               </div>
-              <el-button type="primary" @click="questionDialogVisible = true">新增题目</el-button>
+              <el-button type="primary" @click="bankManageVisible = true">题库管理</el-button>
             </div>
 
             <div class="category-grid">
@@ -39,10 +39,10 @@
               >
                 <div class="category-title-row">
                   <div class="category-title">{{ item.subject }}</div>
-                  <el-tag size="small" type="primary">{{ item.types.length }} 类题型</el-tag>
+                  <el-tag size="small" type="primary">{{ item.bankCount }} 个题库</el-tag>
                 </div>
                 <div class="category-meta">题目总数：{{ item.count }}</div>
-                <div class="category-types">包含：{{ item.types.join(' / ') || '暂无题型' }}</div>
+                <div class="category-types">启用题库：{{ item.enabledBankCount }} 个；题型：{{ item.types.join(' / ') || '暂无题型' }}</div>
                 <el-button type="primary" plain size="small" style="margin-top: 14px;">查看该题库</el-button>
               </div>
             </div>
@@ -164,6 +164,43 @@
       </el-tabs>
     </div>
 
+    <el-dialog v-model="bankManageVisible" title="题库管理" width="760px">
+      <el-form :model="bankForm" :inline="true" class="bank-form">
+        <el-form-item label="题库名称">
+          <el-input v-model="bankForm.name" placeholder="如 数据结构基础题库" />
+        </el-form-item>
+        <el-form-item label="所属学科">
+          <el-select v-model="bankForm.subject" filterable allow-create default-first-option placeholder="请选择或输入学科" style="width: 180px">
+            <el-option v-for="subject in subjectOptions" :key="subject" :label="subject" :value="subject" />
+          </el-select>
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" @click="submitQuestionBank">新增题库</el-button>
+        </el-form-item>
+      </el-form>
+
+      <el-table :data="questionBanks" style="width: 100%" :border="false">
+        <el-table-column prop="name" label="题库名称" min-width="180" />
+        <el-table-column prop="subject" label="所属学科" width="140" />
+        <el-table-column label="状态" width="120" align="center">
+          <template #default="scope">
+            <el-switch
+              :model-value="scope.row.enabled !== false"
+              active-text="启用"
+              inactive-text="停用"
+              @change="toggleQuestionBank(scope.row, $event)"
+            />
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="100" align="center">
+          <template #default="scope">
+            <el-button link type="danger" size="small" @click="deleteQuestionBank(scope.row)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <el-empty v-if="!questionBanks.length" description="暂无题库" :image-size="80" />
+    </el-dialog>
+
     <el-dialog v-model="questionDialogVisible" title="新增题目" width="560px">
       <el-form :model="questionForm" label-width="90px">
         <el-form-item label="所属学科">
@@ -238,23 +275,37 @@ const questionPage = ref(1)
 const examPage = ref(1)
 
 const questionDialogVisible = ref(false)
+const bankManageVisible = ref(false)
 const questionDetailVisible = ref(false)
 const examDetailVisible = ref(false)
 const currentQuestionDetail = ref(null)
 const currentExamDetail = ref(null)
 const questionForm = ref({ subject: '', type: '', title: '', optionsText: '', answer: '', difficulty: 3 })
+const bankForm = ref({ name: '', subject: '' })
 
 const allQuestions = ref([])
 const allExams = ref([])
+const subjectOptions = ref([])
+const questionBanks = ref([])
 
-const questionSubjects = computed(() => [...new Set(allQuestions.value.map(item => item.subject))])
+const questionSubjects = computed(() => [...new Set([
+  ...subjectOptions.value,
+  ...questionBanks.value.map(item => item.subject),
+  ...allQuestions.value.map(item => item.subject)
+].filter(Boolean))])
 const questionTypes = computed(() => [...new Set(allQuestions.value.map(item => item.type))])
 const examColleges = computed(() => [...new Set(allExams.value.map(item => item.college))])
-const questionCategories = computed(() => questionSubjects.value.map(subject => ({
-  subject,
-  count: allQuestions.value.filter(item => item.subject === subject).length,
-  types: [...new Set(allQuestions.value.filter(item => item.subject === subject).map(item => item.type))]
-})))
+const questionCategories = computed(() => questionSubjects.value.map(subject => {
+  const subjectQuestions = allQuestions.value.filter(item => item.subject === subject)
+  const subjectBanks = questionBanks.value.filter(item => item.subject === subject)
+  return {
+    subject,
+    count: subjectQuestions.length,
+    bankCount: subjectBanks.length,
+    enabledBankCount: subjectBanks.filter(item => item.enabled !== false).length,
+    types: [...new Set(subjectQuestions.map(item => item.type))]
+  }
+}))
 
 const filteredQuestions = computed(() => {
   return allQuestions.value.filter(item =>
@@ -368,13 +419,55 @@ const submitQuestion = async () => {
   }
 }
 
+const submitQuestionBank = async () => {
+  const name = bankForm.value.name.trim()
+  const subject = bankForm.value.subject.trim()
+  if (!name || !subject) {
+    ElMessage.error('请填写题库名称和所属学科')
+    return
+  }
+
+  try {
+    await request.post('/admin/resources/question-banks', { name, subject, enabled: true })
+    ElMessage.success('题库新增成功')
+    bankForm.value = { name: '', subject: '' }
+    fetchResources()
+  } catch (e) {
+    ElMessage.error('题库新增失败')
+  }
+}
+
+const toggleQuestionBank = async (row, enabled) => {
+  try {
+    await request.put(`/admin/resources/question-banks/${row.id}`, { enabled })
+    ElMessage.success(enabled ? '题库已启用' : '题库已停用')
+    fetchResources()
+  } catch (e) {
+    ElMessage.error('题库状态更新失败')
+  }
+}
+
+const deleteQuestionBank = (row) => {
+  ElMessageBox.confirm(`确定删除题库「${row.name}」吗？`, '删除确认', { type: 'warning' })
+    .then(async () => {
+      await request.delete(`/admin/resources/question-banks/${row.id}`)
+      ElMessage.success('题库已删除')
+      fetchResources()
+    })
+    .catch(() => {})
+}
+
 const fetchResources = async () => {
   try {
-    const [questions, exams] = await Promise.all([
+    const [questions, subjects, banks, exams] = await Promise.all([
       request.get('/admin/resources/questions'),
+      request.get('/admin/resources/subjects'),
+      request.get('/admin/resources/question-banks'),
       request.get('/admin/resources/exams')
     ])
     allQuestions.value = questions
+    subjectOptions.value = subjects
+    questionBanks.value = banks
     allExams.value = exams
     questionPage.value = 1
     examPage.value = 1
@@ -491,6 +584,12 @@ onMounted(() => {
   font-size: 13px;
   color: var(--text-secondary);
   line-height: 1.6;
+}
+
+.bank-form {
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px dashed var(--glass-border);
 }
 
 .summary-value {

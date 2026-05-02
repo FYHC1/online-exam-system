@@ -26,7 +26,7 @@
         <div class="user-profile">
           <el-dropdown trigger="click">
             <span class="el-dropdown-link name-trigger" style="display:flex; align-items:center; cursor:pointer; outline:none;">
-              <el-avatar :size="32" style="background:var(--primary-color);color:white;margin-right:8px;">{{ user.realName?.charAt(0) || 'U' }}</el-avatar>
+              <el-avatar :size="32" :src="user.avatar" style="background:var(--primary-color);color:white;margin-right:8px;">{{ user.realName?.charAt(0) || 'U' }}</el-avatar>
               <span class="name">{{ user.realName }}</span>
             </span>
             <template #dropdown>
@@ -34,7 +34,7 @@
                 <el-dropdown-item disabled>
                   <div style="text-align:center; padding: 5px 0; line-height: 1.6;">
                     <div style="font-weight:bold; color:var(--text-primary);">{{ user.realName }}</div>
-                    <div style="font-size: 12px; color: var(--text-secondary);">{{ user.grade || '2021级' }} | {{ user.majorClass || '软件工程2班' }}</div>
+                    <div style="font-size: 12px; color: var(--text-secondary);">{{ studentInfoText }}</div>
                     <el-tag size="small" type="info" style="margin-top:2px;">学生用户</el-tag>
                   </div>
                 </el-dropdown-item>
@@ -58,14 +58,33 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import request from '@/utils/request'
 
 const router = useRouter()
 const route = useRoute()
+const user = ref(JSON.parse(localStorage.getItem('userInfo') || '{}'))
 
-const user = computed(() => {
-  return JSON.parse(localStorage.getItem('userInfo') || '{}')
+const studentInfoText = computed(() => {
+  const grade = user.value.grade || (user.value.enrollmentYear ? `${user.value.enrollmentYear}级` : '')
+  const majorClass = user.value.majorClass || [user.value.major, user.value.className].filter(Boolean).join(' | ')
+  return [grade, majorClass].filter(Boolean).join(' | ') || '学生用户'
+})
+
+onMounted(async () => {
+  try {
+    const profile = await request.get('/profile/me')
+    const mergedUser = {
+      ...user.value,
+      ...profile,
+      majorClass: [profile.major, profile.className].filter(Boolean).join(' | ')
+    }
+    user.value = mergedUser
+    localStorage.setItem('userInfo', JSON.stringify(mergedUser))
+  } catch {
+    // Keep cached login info if the profile endpoint is temporarily unavailable.
+  }
 })
 
 const logout = () => {

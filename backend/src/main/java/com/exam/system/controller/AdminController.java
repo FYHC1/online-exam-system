@@ -31,6 +31,11 @@ public class AdminController {
         return Result.success(adminService.getDashboardStats());
     }
 
+    @GetMapping("/analytics")
+    public Result<Map<String, Object>> getAnalytics() {
+        return Result.success(adminService.getAnalyticsStats());
+    }
+
     // --- User Management ---
     @GetMapping("/users")
     public Result<List<SysUser>> getUsers(@RequestParam(required = false) String role, @RequestParam(required = false) String keyword) {
@@ -40,6 +45,41 @@ public class AdminController {
     @GetMapping("/resources/questions")
     public Result<List<Map<String, Object>>> getGlobalQuestions() {
         return Result.success(adminService.getGlobalQuestions());
+    }
+
+    @GetMapping("/resources/subjects")
+    public Result<List<String>> getSubjectCategories() {
+        return Result.success(adminService.getSubjectCategories());
+    }
+
+    @PostMapping("/resources/subjects")
+    public Result<?> addSubjectCategory(@RequestBody Map<String, Object> payload) {
+        Object subject = payload.get("subject");
+        adminService.addSubjectCategory(subject == null ? "" : String.valueOf(subject));
+        return Result.success("学科新增成功");
+    }
+
+    @GetMapping("/resources/question-banks")
+    public Result<List<Map<String, Object>>> getQuestionBanks() {
+        return Result.success(adminService.getQuestionBanks());
+    }
+
+    @PostMapping("/resources/question-banks")
+    public Result<?> addQuestionBank(@RequestBody Map<String, Object> payload) {
+        adminService.addQuestionBank(payload);
+        return Result.success("题库新增成功");
+    }
+
+    @PutMapping("/resources/question-banks/{id}")
+    public Result<?> updateQuestionBank(@PathVariable String id, @RequestBody Map<String, Object> payload) {
+        adminService.updateQuestionBank(id, payload);
+        return Result.success("题库更新成功");
+    }
+
+    @DeleteMapping("/resources/question-banks/{id}")
+    public Result<?> deleteQuestionBank(@PathVariable String id) {
+        adminService.deleteQuestionBank(id);
+        return Result.success("题库删除成功");
     }
 
     @GetMapping("/resources/exams")
@@ -69,6 +109,29 @@ public class AdminController {
         return Result.success("当前学期已更新");
     }
 
+    @GetMapping("/login-carousels")
+    public Result<List<Map<String, Object>>> getLoginCarousels() {
+        return Result.success(adminService.getLoginCarousels(false));
+    }
+
+    @PostMapping("/login-carousels")
+    public Result<?> addLoginCarousel(@RequestBody Map<String, Object> payload) {
+        adminService.addLoginCarousel(payload);
+        return Result.success("轮播图新增成功");
+    }
+
+    @PutMapping("/login-carousels/{id}")
+    public Result<?> updateLoginCarousel(@PathVariable String id, @RequestBody Map<String, Object> payload) {
+        adminService.updateLoginCarousel(id, payload);
+        return Result.success("轮播图更新成功");
+    }
+
+    @DeleteMapping("/login-carousels/{id}")
+    public Result<?> deleteLoginCarousel(@PathVariable String id) {
+        adminService.deleteLoginCarousel(id);
+        return Result.success("轮播图删除成功");
+    }
+
     @PostMapping("/org-structure/nodes")
     public Result<?> addOrgNode(@RequestBody Map<String, Object> payload) {
         adminService.addOrgNode(payload);
@@ -79,6 +142,12 @@ public class AdminController {
     public Result<?> updateOrgNode(@RequestBody Map<String, Object> payload) {
         adminService.updateOrgNode(payload);
         return Result.success("组织节点更新成功");
+    }
+
+    @DeleteMapping("/org-structure/nodes")
+    public Result<?> deleteOrgNode(@RequestBody Map<String, Object> payload) {
+        adminService.deleteOrgNode(payload);
+        return Result.success("组织节点删除成功");
     }
 
     @GetMapping("/resources/questions/{id}")

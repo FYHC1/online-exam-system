@@ -3,6 +3,7 @@ import { ElMessage } from 'element-plus';
 
 const isAuthRequest = (url = '') => url.startsWith('/auth/');
 const isCaptchaRequest = (url = '') => url.startsWith('/auth/captcha');
+const isProfileTermsRequest = (url = '') => url.startsWith('/profile/terms');
 
 const shouldRedirectToLogin = (status, url = '') => {
   if (status !== 401 && status !== 403) {
@@ -10,6 +11,10 @@ const shouldRedirectToLogin = (status, url = '') => {
   }
 
   if (window.location.pathname === '/login') {
+    return false;
+  }
+
+  if (isProfileTermsRequest(url)) {
     return false;
   }
 
@@ -68,7 +73,7 @@ service.interceptors.response.use(
       window.location.href = '/login';
     }
 
-    if (isCaptchaRequest(error.config?.url) && window.location.pathname === '/login') {
+    if ((isCaptchaRequest(error.config?.url) && window.location.pathname === '/login') || isProfileTermsRequest(error.config?.url)) {
       return Promise.reject(error);
     }
 

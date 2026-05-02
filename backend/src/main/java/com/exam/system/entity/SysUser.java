@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.baomidou.mybatisplus.annotation.TableField;
 import java.util.Date;
+import java.util.List;
 
 @TableName("sys_user")
 public class SysUser {
@@ -27,6 +28,10 @@ public class SysUser {
     private String major;
     @TableField(exist = false)
     private String className;
+    @TableField(exist = false)
+    private List<Integer> managedClassIds;
+    @TableField(exist = false)
+    private List<String> managedSubjects;
 
     public Integer getUserId() {
         return userId;
@@ -130,5 +135,21 @@ public class SysUser {
 
     public void setClassName(String className) {
         this.className = className;
+    }
+
+    public List<Integer> getManagedClassIds() {
+        return managedClassIds;
+    }
+
+    public void setManagedClassIds(List<Integer> managedClassIds) {
+        this.managedClassIds = managedClassIds;
+    }
+
+    public List<String> getManagedSubjects() {
+        return managedSubjects;
+    }
+
+    public void setManagedSubjects(List<String> managedSubjects) {
+        this.managedSubjects = managedSubjects;
     }
 }

@@ -5,16 +5,13 @@
         <el-form-item label="学期：">
           <el-select v-model="filters.term" placeholder="选择学期">
             <el-option label="全部" value="" />
-            <el-option label="2023-2024 第一学期" value="23-24-1" />
-            <el-option label="2022-2023 第二学期" value="22-23-2" />
+            <el-option v-for="term in availableTerms" :key="term.name" :label="term.name" :value="term.name" />
           </el-select>
         </el-form-item>
         <el-form-item label="科目：">
           <el-select v-model="filters.subject" placeholder="选择科目">
             <el-option label="全部" value="" />
-            <el-option label="高等数学" value="math" />
-            <el-option label="大学英语" value="english" />
-            <el-option label="JavaWeb" value="java" />
+            <el-option v-for="subject in availableSubjects" :key="subject" :label="subject" :value="subject" />
           </el-select>
         </el-form-item>
         <el-form-item label="考试状态：">
@@ -25,9 +22,6 @@
             <el-option label="已批阅" value="已批阅" />
             <el-option label="异常结束" value="异常结束" />
           </el-select>
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary">筛选查询</el-button>
         </el-form-item>
       </el-form>
     </div>
@@ -60,9 +54,9 @@
           </template>
         </el-table-column>
       </el-table>
-      <div class="pagination-container">
-        <el-pagination background layout="prev, pager, next, total" :total="allExams.length" />
-      </div>
+        <div class="pagination-container">
+          <el-pagination background layout="prev, pager, next, total" :total="paginatedExams.length" />
+        </div>
     </div>
   </div>
 </template>
@@ -75,6 +69,98 @@ import { ElMessage } from 'element-plus'
 const filters = ref({ term: '', subject: '', status: '' })
 
 const allExams = ref([])
+const availableTerms = ref([])
+const termSettings = ref([])
+const STUDY_YEARS = 4
+
+const availableSubjects = computed(() => [...new Set(allExams.value.map(item => item.subject).filter(Boolean))])
+
+const extractEnrollmentYear = (user = {}) => {
+  const candidates = [user.enrollmentYear, user.grade, user.username]
+  for (const item of candidates) {
+    const match = String(item || '').match(/20\d{2}/)
+    if (match) return Number(match[0])
+  }
+  return null
+}
+
+const loadEnrollmentYear = async () => {
+  const localUser = JSON.parse(localStorage.getItem('userInfo') || '{}')
+  const localYear = extractEnrollmentYear(localUser)
+  if (localYear) return localYear
+
+  try {
+    const profile = await request.get('/profile/me')
+    const mergedUser = { ...localUser, ...profile }
+    localStorage.setItem('userInfo', JSON.stringify(mergedUser))
+    return extractEnrollmentYear(mergedUser) || new Date().getFullYear()
+  } catch {
+    return new Date().getFullYear()
+  }
+}
+
+const buildStudyTerms = (enrollmentYear) => {
+  const terms = []
+  for (let year = enrollmentYear; year < enrollmentYear + STUDY_YEARS; year++) {
+    terms.push({ name: `${year}-${year + 1} 学年第一学期`, range: [`${year}-09-01`, `${year + 1}-01-31`] })
+    terms.push({ name: `${year}-${year + 1} 学年第二学期`, range: [`${year + 1}-02-01`, `${year + 1}-08-31`] })
+  }
+  return terms
+}
+
+const filterStudyTerms = (terms, enrollmentYear) => {
+  const graduationStartYear = enrollmentYear + STUDY_YEARS - 1
+  return terms.filter(term => {
+    const startYear = Number(String(term.name).match(/^(20\d{2})-/)?.[1])
+    return !Number.isNaN(startYear) && startYear >= enrollmentYear && startYear <= graduationStartYear
+  })
+}
+
+const loadAvailableTerms = async () => {
+  const enrollmentYear = await loadEnrollmentYear()
+  try {
+    const termData = await request.get('/profile/terms')
+    const terms = termData.terms || []
+    termSettings.value = terms
+    availableTerms.value = filterStudyTerms(terms, enrollmentYear)
+  } catch {
+    const fallbackTerms = buildStudyTerms(enrollmentYear)
+    availableTerms.value = fallbackTerms
+    termSettings.value = fallbackTerms
+  }
+}
+
+const resolveTermByDate = (dateValue, title) => {
+  const rawDateText = typeof dateValue === 'string' ? dateValue.slice(0, 10) : ''
+  const date = dateValue ? new Date(dateValue) : null
+  if (rawDateText || (date && !Number.isNaN(date.getTime()))) {
+    const dateText = rawDateText || [
+      date.getFullYear(),
+      String(date.getMonth() + 1).padStart(2, '0'),
+      String(date.getDate()).padStart(2, '0')
+    ].join('-')
+    const matchedTerm = termSettings.value.find(term => {
+      if (!term.range || term.range.length < 2) return false
+      return dateText >= term.range[0] && dateText <= term.range[1]
+    })
+    if (matchedTerm) {
+      return matchedTerm.name
+    }
+  }
+
+  const match = title?.match(/^(.+?学期)/)
+  if (match) return match[1]
+
+  if (date && !Number.isNaN(date.getTime())) {
+    const year = date.getFullYear()
+    const month = date.getMonth() + 1
+    const academicStartYear = month >= 9 ? year : year - 1
+    const termName = (month >= 9 || month === 1) ? '第一学期' : '第二学期'
+    return `${academicStartYear}-${academicStartYear + 1} 学年${termName}`
+  }
+
+  return '未划分学期'
+}
 
 const loadExams = async () => {
   try {
@@ -106,25 +192,19 @@ const loadExams = async () => {
         return isoString.replace('T', ' ').substring(0, 16)
       }
 
-      // Intelligent parsing for Term
-      const extractTerm = (title) => {
-        const match = title.match(/^(.+?学期)/)
-        return match ? match[1] : '全周期'
-      }
-
       const extractSubjectFromTitle = (title) => {
         const match = title.match(/《(.+?)》/)
         return match ? match[1] : '通用'
       }
       
-      return {
-        id: exam.examId,
-        title: exam.title,
-        subject: (exam.subject && exam.subject !== '通用') ? exam.subject : extractSubjectFromTitle(exam.title),
-        term: extractTerm(exam.title),
-        time: `${formatTime(exam.startTime)} ~ ${formatTime(exam.endTime)}`,
-        status: statusText
-      }
+        return {
+          id: exam.examId,
+          title: exam.title,
+          subject: (exam.subject && exam.subject !== '通用') ? exam.subject : extractSubjectFromTitle(exam.title),
+          term: resolveTermByDate(exam.startTime, exam.title),
+          time: `${formatTime(exam.startTime)} ~ ${formatTime(exam.endTime)}`,
+          status: statusText
+        }
     })
   } catch (error) {
     ElMessage.error('无法加载考试列表')
@@ -132,26 +212,16 @@ const loadExams = async () => {
   }
 }
 
-onMounted(() => {
-  loadExams()
+onMounted(async () => {
+  await loadAvailableTerms()
+  await loadExams()
 })
 
 const paginatedExams = computed(() => {
   return allExams.value.filter(exam => {
     // Term filter: map select values to keywords
-    let matchTerm = true
-    if (filters.value.term) {
-      if (filters.value.term === '23-24-1') matchTerm = exam.title.includes('2023-2024') || exam.title.includes('2023')
-      else if (filters.value.term === '22-23-2') matchTerm = exam.title.includes('2022-2023') || exam.title.includes('2022')
-    }
-    
-    // Subject filter
-    let matchSubject = true
-    if (filters.value.subject) {
-      if (filters.value.subject === 'math') matchSubject = exam.title.includes('数学')
-      else if (filters.value.subject === 'english') matchSubject = exam.title.includes('英语')
-      else if (filters.value.subject === 'java') matchSubject = exam.title.toLowerCase().includes('java')
-    }
+      const matchTerm = !filters.value.term || exam.term === filters.value.term
+      const matchSubject = !filters.value.subject || exam.subject === filters.value.subject
     
     // Status filter
     let matchStatus = true

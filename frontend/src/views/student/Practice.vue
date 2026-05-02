@@ -7,11 +7,10 @@
 
     <div class="glass-card filter-bar mb-4" style="padding: 20px 20px 0 20px;">
       <el-form :inline="true" :model="filters">
-        <el-form-item label="来源考试">
-          <el-select v-model="filters.exam" placeholder="全部考试">
-            <el-option label="全部考试" value="" />
-            <el-option label="高等数学期中考试" value="高等数学期中考试" />
-            <el-option label="计算机网络小测" value="计算机网络小测" />
+        <el-form-item label="所属学科">
+          <el-select v-model="filters.subject" placeholder="全部学科">
+            <el-option label="全部学科" value="" />
+            <el-option v-for="subject in subjectOptions" :key="subject" :label="subject" :value="subject" />
           </el-select>
         </el-form-item>
         <el-form-item label="题目类型">
@@ -114,7 +113,7 @@ import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import request from '@/utils/request'
 
-const filters = ref({ exam: '', type: '', difficulty: '' })
+const filters = ref({ subject: '', type: '', difficulty: '' })
 
 const wrongQuestions = ref([])
 const challengeDialogVisible = ref(false)
@@ -163,6 +162,7 @@ const normalizeAnswer = (answer) => {
 }
 
 const challengeResultTitle = computed(() => challengeCorrect.value ? '回答正确，继续保持。' : '回答有误，建议再复习一遍。')
+const subjectOptions = computed(() => [...new Set(wrongQuestions.value.map(item => item.subject).filter(Boolean))])
 
 const loadWrongQuestions = async () => {
   try {
@@ -172,6 +172,7 @@ const loadWrongQuestions = async () => {
       questionId: item.questionId,
       title: item.questionTitle || '题目内容加载中...',
       type: item.questionType || '未知',
+      subject: item.questionSubject || '未分类',
       examName: item.sourceExamTitle || '历史考试',
       errorCount: item.errorCount || 1,
       difficulty: item.questionDifficulty || 3,
@@ -195,7 +196,7 @@ const filteredQuestions = computed(() => {
     if (filters.value.difficulty === 'easy') diffMatch = q.difficulty <= 2;
     if (filters.value.difficulty === 'hard') diffMatch = q.difficulty >= 3;
 
-    return (!filters.value.exam || q.examName === filters.value.exam) &&
+    return (!filters.value.subject || q.subject === filters.value.subject) &&
            (!filters.value.type || q.type === filters.value.type) &&
            diffMatch
   })

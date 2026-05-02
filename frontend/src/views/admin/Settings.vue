@@ -8,11 +8,19 @@
       <div class="summary-grid">
         <div class="summary-item">
           <div class="summary-value">{{ orgStats.departments }}</div>
-          <div class="summary-label">院系数量</div>
+          <div class="summary-label">学院数量</div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-value">{{ orgStats.majors }}</div>
+          <div class="summary-label">专业数量</div>
         </div>
         <div class="summary-item">
           <div class="summary-value">{{ orgStats.classes }}</div>
           <div class="summary-label">班级数量</div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-value">{{ subjectCategories.length }}</div>
+          <div class="summary-label">学科数量</div>
         </div>
         <div class="summary-item">
           <div class="summary-value">{{ auditLogs.length }}</div>
@@ -30,16 +38,16 @@
                 <div class="section-card">
                   <div class="section-header">
                     <div>
-                      <h3>组织架构选择</h3>
-                      <p>通过院系、专业、班级三级选择快速定位目标节点，适合院系和班级较多时管理。</p>
+                      <h3>学院 / 专业 / 班级</h3>
+                      <p>三者按层级关联：先选学院，再管理该学院下的专业和班级。</p>
                     </div>
-                    <el-button type="primary" size="small" @click="openAddNodeDialog">新增节点</el-button>
+                    <el-button type="primary" size="small" @click="openAddNodeDialog">新增分类</el-button>
                   </div>
 
                   <div class="org-selector-grid">
                     <el-form label-position="top">
-                      <el-form-item label="院系">
-                        <el-select v-model="selectedDepartment" placeholder="请选择院系" style="width: 100%">
+                      <el-form-item label="学院">
+                        <el-select v-model="selectedDepartment" placeholder="请选择学院" style="width: 100%">
                           <el-option v-for="department in departmentOptions" :key="department.name" :label="department.name" :value="department.name" />
                         </el-select>
                       </el-form-item>
@@ -56,11 +64,19 @@
                     </el-form>
                   </div>
 
-                  <div class="tree-panel compact-list">
-                    <div class="tree-node root">当前层级概览</div>
-                    <div class="structure-list">
+                    <div class="tree-panel compact-list">
+                      <div class="tree-node root">当前选择</div>
+                      <div class="level-switch">
+                        <span>管理层级</span>
+                        <el-radio-group v-model="selectedOrgLevel" size="small">
+                          <el-radio-button label="院系">学院</el-radio-button>
+                          <el-radio-button label="专业" :disabled="!currentMajor">专业</el-radio-button>
+                          <el-radio-button label="班级" :disabled="!currentClass">班级</el-radio-button>
+                        </el-radio-group>
+                      </div>
+                      <div class="structure-list">
                       <div class="structure-item">
-                        <span class="structure-label">院系</span>
+                          <span class="structure-label">学院</span>
                         <div class="structure-value">
                           {{ currentDepartment?.name || '未选择' }}
                           <el-tag size="small" :type="currentDepartment?.archived ? 'info' : 'success'">{{ currentDepartment?.archived ? '归档' : '启用' }}</el-tag>
@@ -89,6 +105,7 @@
                         <span class="class-chip-count">{{ classItem.count }} 人</span>
                       </div>
                     </div>
+                    <el-empty v-else description="当前专业暂无班级" :image-size="70" />
                   </div>
                 </div>
               </el-col>
@@ -97,22 +114,22 @@
                 <div class="section-card highlight-card">
                   <div class="section-header simple">
                     <div>
-                      <h3>节点信息维护</h3>
-                      <p>修改当前选中节点的名称、上级节点和状态。</p>
+                      <h3>分类信息维护</h3>
+                      <p>修改当前选中的学院、专业或班级信息。学科分类在独立页签中维护。</p>
                     </div>
                   </div>
 
                   <el-form label-position="top" :model="orgForm">
                     <el-row :gutter="16">
                       <el-col :span="12">
-                        <el-form-item label="节点名称">
+                        <el-form-item label="名称">
                           <el-input v-model="orgForm.name" />
                         </el-form-item>
                       </el-col>
                       <el-col :span="12">
-                        <el-form-item label="节点类型">
-                          <el-select v-model="orgForm.type" style="width: 100%">
-                            <el-option label="院系" value="院系" />
+                        <el-form-item label="类型">
+                          <el-select v-model="orgForm.type" style="width: 100%" disabled>
+                            <el-option label="学院" value="院系" />
                             <el-option label="专业" value="专业" />
                             <el-option label="班级" value="班级" />
                           </el-select>
@@ -122,14 +139,14 @@
 
                     <el-row :gutter="16">
                       <el-col :span="12">
-                        <el-form-item label="上级节点">
+                        <el-form-item label="上级分类">
                           <el-select v-model="orgForm.parent" style="width: 100%">
                             <el-option v-for="parent in parentOptions" :key="parent" :label="parent" :value="parent" />
                           </el-select>
                         </el-form-item>
                       </el-col>
                       <el-col :span="12">
-                        <el-form-item label="节点状态">
+                        <el-form-item label="状态">
                           <el-switch v-model="orgForm.enabled" active-text="启用" inactive-text="停用" />
                         </el-form-item>
                       </el-col>
@@ -140,6 +157,7 @@
                     </el-form-item>
 
                     <div class="action-row">
+                      <el-button type="danger" plain @click="deleteOrgForm">删除当前分类</el-button>
                       <el-button @click="resetOrgForm">取消</el-button>
                       <el-button type="primary" @click="saveOrgForm">保存修改</el-button>
                     </div>
@@ -147,6 +165,28 @@
                 </div>
               </el-col>
             </el-row>
+          </div>
+        </el-tab-pane>
+
+        <el-tab-pane label="学科分类" name="subjects">
+          <div class="p-4">
+            <div class="section-card">
+              <div class="section-header">
+                <div>
+                  <h3>学科分类</h3>
+                  <p>学科独立于学院、专业和班级，用于题库、教师负责学科和考试学科分类。</p>
+                </div>
+                <el-button type="primary" @click="openSubjectDialog">新增学科</el-button>
+              </div>
+
+              <div class="subject-grid">
+                <div v-for="subject in subjectCategories" :key="subject" class="subject-card">
+                  <span>{{ subject }}</span>
+                  <el-tag size="small" type="success">启用</el-tag>
+                </div>
+              </div>
+              <el-empty v-if="!subjectCategories.length" description="暂无学科分类" :image-size="80" />
+            </div>
           </div>
         </el-tab-pane>
 
@@ -188,26 +228,26 @@
                   <h3>登录页轮播图管理</h3>
                   <p>维护登录页展示的轮播图片内容与排序。</p>
                 </div>
-                <el-button type="primary">新增轮播图</el-button>
+                <el-button type="primary" @click="openCarouselDialog()">新增轮播图</el-button>
               </div>
 
               <div class="carousel-list">
-                <div class="carousel-item active">
-                  <div class="carousel-title">校园迎新宣传海报</div>
-                  <div class="carousel-actions">
-                    <el-button link type="primary">编辑</el-button>
-                    <el-button link type="danger">删除</el-button>
+                <div v-for="item in loginCarousels" :key="item.id" class="carousel-item" :class="{ active: item.enabled !== false }">
+                  <div v-if="item.imageUrl" class="carousel-preview" :style="{ backgroundImage: `url(${item.imageUrl})` }"></div>
+                  <div class="carousel-title">{{ item.title }}</div>
+                  <div class="carousel-desc">{{ item.subtitle || '暂无说明' }}</div>
+                  <div class="carousel-meta">
+                    <el-tag size="small" :type="item.enabled !== false ? 'success' : 'info'">{{ item.enabled !== false ? '启用' : '停用' }}</el-tag>
+                    <span>排序：{{ item.sort }}</span>
                   </div>
-                </div>
-                <div class="carousel-item">
-                  <div class="carousel-title">诚信考试倡议海报</div>
                   <div class="carousel-actions">
-                    <el-button link type="primary">编辑</el-button>
-                    <el-button link type="danger">删除</el-button>
+                    <el-button link type="primary" @click="openCarouselDialog(item)">编辑</el-button>
+                    <el-button link :type="item.enabled !== false ? 'warning' : 'success'" @click="toggleCarousel(item)">{{ item.enabled !== false ? '停用' : '启用' }}</el-button>
+                    <el-button link type="danger" @click="deleteCarousel(item)">删除</el-button>
                   </div>
                 </div>
                 <div class="carousel-item empty">
-                  <span>点击新增新的轮播图资源</span>
+                  <span @click="openCarouselDialog()">点击新增新的轮播图资源</span>
                 </div>
               </div>
             </div>
@@ -268,23 +308,35 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="addNodeDialogVisible" title="新增组织节点" width="520px">
+    <el-dialog v-model="addNodeDialogVisible" title="新增组织分类" width="520px">
       <el-form :model="addNodeForm" label-position="top">
-        <el-form-item label="节点类型">
+        <el-form-item label="分类类型">
           <el-select v-model="addNodeForm.type" style="width: 100%">
-            <el-option label="院系" value="院系" />
+            <el-option label="学院" value="院系" />
             <el-option label="专业" value="专业" />
             <el-option label="班级" value="班级" />
           </el-select>
         </el-form-item>
 
-        <el-form-item label="节点名称">
-          <el-input v-model="addNodeForm.name" placeholder="请输入节点名称" />
+        <el-form-item label="分类名称">
+          <el-input v-model="addNodeForm.name" placeholder="请输入分类名称" />
         </el-form-item>
 
-        <el-form-item v-if="addNodeForm.type !== '院系'" :label="addNodeForm.type === '专业' ? '所属院系' : '所属专业'">
-          <el-select v-model="addNodeForm.parent" style="width: 100%" :placeholder="addNodeForm.type === '专业' ? '请选择院系' : '请选择专业'">
-            <el-option v-for="parent in addNodeParentOptions" :key="parent" :label="parent" :value="parent" />
+        <el-form-item v-if="addNodeForm.type === '专业'" label="所属学院">
+          <el-select v-model="addNodeForm.parent" style="width: 100%" placeholder="请选择学院">
+            <el-option v-for="parent in addNodeDepartmentOptions" :key="parent" :label="parent" :value="parent" />
+          </el-select>
+        </el-form-item>
+
+        <el-form-item v-if="addNodeForm.type === '班级'" label="所属学院">
+          <el-select v-model="addNodeForm.parentDepartment" style="width: 100%" placeholder="请选择学院">
+            <el-option v-for="parent in addNodeDepartmentOptions" :key="parent" :label="parent" :value="parent" />
+          </el-select>
+        </el-form-item>
+
+        <el-form-item v-if="addNodeForm.type === '班级'" label="所属专业">
+          <el-select v-model="addNodeForm.parent" style="width: 100%" placeholder="请先选择学院，再选择专业">
+            <el-option v-for="parent in addNodeMajorOptions" :key="parent" :label="parent" :value="parent" />
           </el-select>
         </el-form-item>
 
@@ -292,7 +344,7 @@
           <el-input-number v-model="addNodeForm.count" :min="0" style="width: 100%" />
         </el-form-item>
 
-        <el-form-item v-if="addNodeForm.type === '院系'" label="节点状态">
+        <el-form-item v-if="addNodeForm.type === '院系'" label="学院状态">
           <el-switch v-model="addNodeForm.enabled" active-text="启用" inactive-text="归档" />
         </el-form-item>
       </el-form>
@@ -302,28 +354,75 @@
         <el-button type="primary" @click="submitAddNode">确认新增</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="subjectDialogVisible" title="新增学科" width="460px">
+      <el-form :model="subjectForm" label-position="top">
+        <el-form-item label="学科名称">
+          <el-input v-model="subjectForm.subject" placeholder="请输入学科名称，如 数据结构" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="subjectDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="submitSubject">确认新增</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="carouselDialogVisible" :title="carouselForm.id ? '编辑轮播图' : '新增轮播图'" width="560px">
+      <el-form :model="carouselForm" label-position="top">
+        <el-form-item label="标题">
+          <el-input v-model="carouselForm.title" placeholder="请输入轮播标题" />
+        </el-form-item>
+        <el-form-item label="说明文字">
+          <el-input v-model="carouselForm.subtitle" placeholder="请输入副标题或说明" />
+        </el-form-item>
+        <el-form-item label="图片地址">
+          <el-input v-model="carouselForm.imageUrl" placeholder="请输入图片 URL，留空使用默认渐变背景" />
+        </el-form-item>
+        <el-form-item label="本地图片">
+          <input type="file" accept="image/*" @change="handleCarouselFileChange" />
+          <div class="form-tip">可选择本地图片，系统会转换为可保存的图片数据。建议使用横向长方形图片。</div>
+        </el-form-item>
+        <el-form-item label="排序">
+          <el-input-number v-model="carouselForm.sort" :min="1" style="width: 100%" />
+        </el-form-item>
+        <el-form-item label="状态">
+          <el-switch v-model="carouselForm.enabled" active-text="启用" inactive-text="停用" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="carouselDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="submitCarousel">保存</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import request from '@/utils/request'
 
 const activeTab = ref('org')
 const logKeyword = ref('')
 const addNodeDialogVisible = ref(false)
 const addTermDialogVisible = ref(false)
+const subjectDialogVisible = ref(false)
+const carouselDialogVisible = ref(false)
 
 const createDefaultAddNodeForm = () => ({
   type: '院系',
   name: '',
   parent: '',
+  parentDepartment: '',
   count: 0,
   enabled: true
 })
 
 const addNodeForm = ref(createDefaultAddNodeForm())
+const subjectForm = ref({ subject: '' })
+const subjectCategories = ref([])
+const loginCarousels = ref([])
+const carouselForm = ref({ id: '', title: '', subtitle: '', imageUrl: '', enabled: true, sort: 1 })
 
 const orgTree = ref([
   {
@@ -367,9 +466,11 @@ const orgTree = ref([
 const selectedDepartment = ref(orgTree.value[0]?.name || '')
 const selectedMajor = ref(orgTree.value[0]?.majors?.[0]?.name || '')
 const selectedClass = ref(orgTree.value[0]?.majors?.[0]?.classes?.[0]?.name || '')
+const selectedOrgLevel = ref('班级')
 
 const orgStats = computed(() => ({
   departments: orgTree.value.length,
+  majors: orgTree.value.reduce((sum, department) => sum + department.majors.length, 0),
   classes: orgTree.value.reduce((sum, department) => sum + department.majors.reduce((majorSum, major) => majorSum + major.classes.length, 0), 0)
 }))
 
@@ -398,31 +499,42 @@ const parentOptions = computed(() => {
   return majorOptions.value.map(item => item.name)
 })
 
-const addNodeParentOptions = computed(() => {
-  if (addNodeForm.value.type === '专业') {
-    return orgTree.value.map(item => item.name)
-  }
-  if (addNodeForm.value.type === '班级') {
-    return orgTree.value.flatMap(item => item.majors.map(major => major.name))
-  }
-  return []
+const addNodeDepartmentOptions = computed(() => orgTree.value.filter(item => !item.archived).map(item => item.name))
+const addNodeMajorOptions = computed(() => {
+  const department = orgTree.value.find(item => item.name === addNodeForm.value.parentDepartment)
+  return department?.majors?.map(major => major.name) || []
 })
 
 watch(currentDepartment, (department) => {
   if (!department) return
   selectedMajor.value = department.majors?.[0]?.name || ''
+  if (!department.majors?.length) {
+    selectedOrgLevel.value = '院系'
+  }
 })
 
 watch(currentMajor, (major) => {
   if (!major) {
     selectedClass.value = ''
+    if (selectedOrgLevel.value !== '院系') {
+      selectedOrgLevel.value = '院系'
+    }
     return
   }
   selectedClass.value = major.classes?.[0]?.name || ''
+  if (!major.classes?.length && selectedOrgLevel.value === '班级') {
+    selectedOrgLevel.value = '专业'
+  }
 })
 
-watch([currentDepartment, currentMajor, currentClass], ([department, major, classItem]) => {
-  if (classItem) {
+watch(currentClass, (classItem) => {
+  if (!classItem && selectedOrgLevel.value === '班级') {
+    selectedOrgLevel.value = currentMajor.value ? '专业' : '院系'
+  }
+})
+
+watch([currentDepartment, currentMajor, currentClass, selectedOrgLevel], ([department, major, classItem, level]) => {
+  if (level === '班级' && classItem) {
     orgForm.value = {
       name: classItem.name,
       type: '班级',
@@ -433,7 +545,7 @@ watch([currentDepartment, currentMajor, currentClass], ([department, major, clas
     return
   }
 
-  if (major) {
+  if (level === '专业' && major) {
     orgForm.value = {
       name: major.name,
       type: '专业',
@@ -450,16 +562,21 @@ watch([currentDepartment, currentMajor, currentClass], ([department, major, clas
       type: '院系',
       parent: '在线考试系统',
       enabled: !department.archived,
-      remark: department.archived ? '该院系已归档，仅保留历史数据。' : '当前院系正常启用。'
+      remark: department.archived ? '该学院已归档，仅保留历史数据。' : '当前学院正常启用。'
     }
   }
 }, { immediate: true })
 
 watch(() => addNodeForm.value.type, (type) => {
   addNodeForm.value.parent = ''
+  addNodeForm.value.parentDepartment = ''
   if (type !== '班级') {
     addNodeForm.value.count = 0
   }
+})
+
+watch(() => addNodeForm.value.parentDepartment, () => {
+  addNodeForm.value.parent = ''
 })
 
 const openAddNodeDialog = () => {
@@ -479,14 +596,42 @@ const loadOrgStructure = async () => {
   }
 }
 
+const buildOrgPayload = () => ({
+  type: selectedOrgLevel.value,
+  currentDepartment: currentDepartment.value?.name,
+  currentMajor: currentMajor.value?.name,
+  currentClass: currentClass.value?.name
+})
+
+const loadSubjectCategories = async () => {
+  try {
+    subjectCategories.value = await request.get('/admin/resources/subjects')
+  } catch (e) {
+    ElMessage.error('获取学科分类失败')
+  }
+}
+
+const loadLoginCarousels = async () => {
+  try {
+    loginCarousels.value = await request.get('/admin/login-carousels')
+  } catch (e) {
+    ElMessage.error('获取登录轮播图失败')
+  }
+}
+
 const submitAddNode = async () => {
   if (!addNodeForm.value.name) {
-    ElMessage.error('请输入节点名称')
+    ElMessage.error('请输入分类名称')
     return
   }
 
-  if (addNodeForm.value.type !== '院系' && !addNodeForm.value.parent) {
-    ElMessage.error(`请选择所属${addNodeForm.value.type === '专业' ? '院系' : '专业'}`)
+  if (addNodeForm.value.type === '专业' && !addNodeForm.value.parent) {
+    ElMessage.error('请选择所属学院')
+    return
+  }
+
+  if (addNodeForm.value.type === '班级' && (!addNodeForm.value.parentDepartment || !addNodeForm.value.parent)) {
+    ElMessage.error('请选择班级所属学院和专业')
     return
   }
 
@@ -498,16 +643,114 @@ const submitAddNode = async () => {
       selectedMajor.value = ''
       selectedClass.value = ''
     } else if (addNodeForm.value.type === '专业') {
+      selectedDepartment.value = addNodeForm.value.parent
       selectedMajor.value = addNodeForm.value.name
       selectedClass.value = ''
     } else {
+      selectedDepartment.value = addNodeForm.value.parentDepartment
+      selectedMajor.value = addNodeForm.value.parent
       selectedClass.value = addNodeForm.value.name
     }
     addNodeDialogVisible.value = false
-    ElMessage.success('组织节点新增成功')
+    ElMessage.success('组织分类新增成功')
   } catch (e) {
-    ElMessage.error('组织节点新增失败')
+    ElMessage.error('组织分类新增失败')
   }
+}
+
+const openSubjectDialog = () => {
+  subjectForm.value = { subject: '' }
+  subjectDialogVisible.value = true
+}
+
+const submitSubject = async () => {
+  const subject = subjectForm.value.subject.trim()
+  if (!subject) {
+    ElMessage.error('请输入学科名称')
+    return
+  }
+
+  try {
+    await request.post('/admin/resources/subjects', { subject })
+    await loadSubjectCategories()
+    subjectDialogVisible.value = false
+    ElMessage.success('学科新增成功')
+  } catch (e) {
+    ElMessage.error('学科新增失败')
+  }
+}
+
+const openCarouselDialog = (item = null) => {
+  carouselForm.value = item
+    ? { ...item, enabled: item.enabled !== false, sort: Number(item.sort || 1) }
+    : { id: '', title: '', subtitle: '', imageUrl: '', enabled: true, sort: loginCarousels.value.length + 1 }
+  carouselDialogVisible.value = true
+}
+
+const submitCarousel = async () => {
+  if (!carouselForm.value.title?.trim()) {
+    ElMessage.error('请输入轮播标题')
+    return
+  }
+
+  const payload = {
+    title: carouselForm.value.title.trim(),
+    subtitle: carouselForm.value.subtitle?.trim() || '',
+    imageUrl: carouselForm.value.imageUrl?.trim() || '',
+    enabled: carouselForm.value.enabled,
+    sort: carouselForm.value.sort
+  }
+  try {
+    if (carouselForm.value.id) {
+      await request.put(`/admin/login-carousels/${carouselForm.value.id}`, payload)
+    } else {
+      await request.post('/admin/login-carousels', payload)
+    }
+    carouselDialogVisible.value = false
+    await loadLoginCarousels()
+    ElMessage.success('轮播图已保存')
+  } catch (e) {
+    ElMessage.error('轮播图保存失败')
+  }
+}
+
+const toggleCarousel = async (item) => {
+  try {
+    await request.put(`/admin/login-carousels/${item.id}`, { enabled: item.enabled === false })
+    await loadLoginCarousels()
+    ElMessage.success(item.enabled === false ? '轮播图已启用' : '轮播图已停用')
+  } catch (e) {
+    ElMessage.error('轮播图状态更新失败')
+  }
+}
+
+const deleteCarousel = (item) => {
+  ElMessageBox.confirm(`确定删除轮播图「${item.title}」吗？`, '删除确认', { type: 'warning' })
+    .then(async () => {
+      await request.delete(`/admin/login-carousels/${item.id}`)
+      await loadLoginCarousels()
+      ElMessage.success('轮播图已删除')
+    })
+    .catch(() => {})
+}
+
+const handleCarouselFileChange = (event) => {
+  const file = event.target.files?.[0]
+  if (!file) return
+  if (!file.type.startsWith('image/')) {
+    ElMessage.error('请选择图片文件')
+    return
+  }
+  if (file.size > 1024 * 1024) {
+    ElMessage.error('图片不能超过 1MB')
+    event.target.value = ''
+    return
+  }
+  const reader = new FileReader()
+  reader.onload = () => {
+    carouselForm.value.imageUrl = String(reader.result || '')
+  }
+  reader.readAsDataURL(file)
 }
 
 const resetOrgForm = () => {
@@ -515,7 +758,7 @@ const resetOrgForm = () => {
   const major = currentMajor.value
   const classItem = currentClass.value
 
-  if (classItem) {
+  if (selectedOrgLevel.value === '班级' && classItem) {
     orgForm.value = {
       name: classItem.name,
       type: '班级',
@@ -526,7 +769,7 @@ const resetOrgForm = () => {
     return
   }
 
-  if (major) {
+  if (selectedOrgLevel.value === '专业' && major) {
     orgForm.value = {
       name: major.name,
       type: '专业',
@@ -543,20 +786,22 @@ const resetOrgForm = () => {
       type: '院系',
       parent: '在线考试系统',
       enabled: !department.archived,
-      remark: department.archived ? '该院系已归档，仅保留历史数据。' : '当前院系正常启用。'
+      remark: department.archived ? '该学院已归档，仅保留历史数据。' : '当前学院正常启用。'
     }
   }
 }
 
 const saveOrgForm = async () => {
+  if (!orgForm.value.name?.trim()) {
+    ElMessage.error('请输入分类名称')
+    return
+  }
+
   try {
     await request.put('/admin/org-structure/nodes', {
-      type: orgForm.value.type,
-      name: orgForm.value.name,
-      enabled: orgForm.value.enabled,
-      currentDepartment: currentDepartment.value?.name,
-      currentMajor: currentMajor.value?.name,
-      currentClass: currentClass.value?.name
+      ...buildOrgPayload(),
+      name: orgForm.value.name.trim(),
+      enabled: orgForm.value.enabled
     })
     await loadOrgStructure()
     if (orgForm.value.type === '院系') {
@@ -566,14 +811,43 @@ const saveOrgForm = async () => {
     } else {
       selectedClass.value = orgForm.value.name
     }
-    ElMessage.success('节点信息已保存')
+    ElMessage.success('分类信息已保存')
   } catch (e) {
-    ElMessage.error('节点信息保存失败')
+    ElMessage.error('分类信息保存失败')
   }
+}
+
+const deleteOrgForm = () => {
+  if (!currentDepartment.value) {
+    ElMessage.error('请选择要删除的分类')
+    return
+  }
+
+  const type = selectedOrgLevel.value
+  const name = type === '院系'
+    ? currentDepartment.value?.name
+    : (type === '专业' ? currentMajor.value?.name : currentClass.value?.name)
+  if (!name) {
+    ElMessage.error('请选择要删除的分类')
+    return
+  }
+
+  const childText = type === '院系' ? '该学院下的专业和班级也会一起删除。' : (type === '专业' ? '该专业下的班级也会一起删除。' : '')
+  ElMessageBox.confirm(`确定删除${type === '院系' ? '学院' : type}「${name}」吗？${childText}`, '删除确认', { type: 'warning' })
+    .then(async () => {
+      await request.delete('/admin/org-structure/nodes', {
+        data: buildOrgPayload()
+      })
+      await loadOrgStructure()
+      ElMessage.success('分类已删除')
+    })
+    .catch(() => {})
 }
 
 onMounted(() => {
   loadOrgStructure()
+  loadSubjectCategories()
+  loadLoginCarousels()
   loadTermSettings()
 })
 
@@ -641,6 +915,13 @@ const saveCurrentTerm = async () => {
     ElMessage.error('当前学期保存失败')
   }
 }
+
+watch(() => termForm.value.name, (name) => {
+  const matchedTerm = termOptions.value.find(item => item.name === name)
+  if (matchedTerm?.range?.length) {
+    termForm.value.range = matchedTerm.range
+  }
+})
 
 const auditLogs = ref([
   { time: '2023-11-28 14:32:01', actor: '管理员 admin1', action: '将当前学期切换为 2023-2024 学年第一学期', ip: '192.168.1.1', risk: true },
@@ -766,6 +1047,22 @@ const filteredAuditLogs = computed(() => {
   color: var(--primary-color);
 }
 
+.level-switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.4);
+}
+
+.level-switch span {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
 .tree-node.sub {
   margin-top: 10px;
   background: rgba(255, 255, 255, 0.45);
@@ -855,6 +1152,24 @@ const filteredAuditLogs = computed(() => {
   font-size: 13px;
 }
 
+.subject-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 14px;
+}
+
+.subject-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.4);
+  border: 1px solid var(--glass-border);
+  font-weight: 600;
+}
+
 .action-row {
   display: flex;
   justify-content: flex-end;
@@ -868,7 +1183,7 @@ const filteredAuditLogs = computed(() => {
 }
 
 .carousel-item {
-  min-height: 120px;
+  min-height: 170px;
   border-radius: 14px;
   padding: 16px;
   border: 1px dashed rgba(var(--primary-color-rgb), 0.35);
@@ -876,6 +1191,15 @@ const filteredAuditLogs = computed(() => {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
+}
+
+.carousel-preview {
+  height: 72px;
+  border-radius: 10px;
+  margin-bottom: 12px;
+  background-size: cover;
+  background-position: center;
+  border: 1px solid var(--glass-border);
 }
 
 .carousel-item.active {
@@ -891,6 +1215,25 @@ const filteredAuditLogs = computed(() => {
 
 .carousel-title {
   font-weight: 600;
+}
+
+.carousel-desc,
+.carousel-meta {
+  margin-top: 8px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.carousel-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.form-tip {
+  margin-top: 6px;
+  color: var(--text-secondary);
+  font-size: 12px;
 }
 
 .carousel-actions {

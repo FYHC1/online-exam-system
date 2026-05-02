@@ -14,18 +14,18 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Date;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 public class AdminServiceImpl implements AdminService {
 
     private static final Path ORG_STRUCTURE_FILE = Paths.get("data", "org-structure.json");
     private static final Path TERM_SETTINGS_FILE = Paths.get("data", "term-settings.json");
+    private static final Path PROFILE_META_FILE = Paths.get("data", "user-profile-meta.json");
+    private static final Path QUESTION_BANKS_FILE = Paths.get("data", "question-bank-subjects.json");
+    private static final Path SUBJECT_CATEGORIES_FILE = Paths.get("data", "subject-categories.json");
+    private static final Path LOGIN_CAROUSEL_FILE = Paths.get("data", "login-carousel.json");
 
     @Autowired
     private SysUserMapper userMapper;
@@ -35,6 +35,8 @@ public class AdminServiceImpl implements AdminService {
     private SysAnnouncementMapper announcementMapper;
     @Autowired
     private ExamArrangementMapper examMapper;
+    @Autowired
+    private StudentExamRecordMapper studentExamRecordMapper;
     @Autowired
     private QuestionBankMapper questionMapper;
     @Autowired
@@ -81,6 +83,190 @@ public class AdminServiceImpl implements AdminService {
 
             return null;
         }
+    }
+
+    private Map<String, Map<String, Object>> loadProfileMeta() {
+        try {
+            if (Files.notExists(PROFILE_META_FILE)) {
+                return new HashMap<>();
+            }
+            return objectMapper.readValue(PROFILE_META_FILE.toFile(), new TypeReference<Map<String, Map<String, Object>>>() {});
+        } catch (Exception e) {
+            return new HashMap<>();
+        }
+    }
+
+    private void saveProfileMeta(Map<String, Map<String, Object>> meta) {
+        try {
+            if (PROFILE_META_FILE.getParent() != null) {
+                Files.createDirectories(PROFILE_META_FILE.getParent());
+            }
+            objectMapper.writerWithDefaultPrettyPrinter().writeValue(PROFILE_META_FILE.toFile(), meta);
+        } catch (IOException e) {
+            throw new RuntimeException("保存用户扩展信息失败", e);
+        }
+    }
+
+    private List<String> loadSubjectCategories() {
+        try {
+            if (Files.notExists(SUBJECT_CATEGORIES_FILE)) {
+                return new ArrayList<>();
+            }
+            return objectMapper.readValue(SUBJECT_CATEGORIES_FILE.toFile(), new TypeReference<List<String>>() {});
+        } catch (Exception e) {
+            return new ArrayList<>();
+        }
+    }
+
+    private void saveSubjectCategories(List<String> subjects) {
+        try {
+            Files.createDirectories(SUBJECT_CATEGORIES_FILE.getParent());
+            objectMapper.writerWithDefaultPrettyPrinter().writeValue(SUBJECT_CATEGORIES_FILE.toFile(), subjects);
+        } catch (IOException e) {
+            throw new RuntimeException("保存学科分类失败", e);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> loadQuestionBanks() {
+        try {
+            if (Files.notExists(QUESTION_BANKS_FILE)) {
+                return new ArrayList<>();
+            }
+            List<?> raw = objectMapper.readValue(QUESTION_BANKS_FILE.toFile(), new TypeReference<List<?>>() {});
+            List<Map<String, Object>> banks = new ArrayList<>();
+            for (Object item : raw) {
+                if (item instanceof Map<?, ?> map) {
+                    banks.add(new HashMap<>((Map<String, Object>) map));
+                    continue;
+                }
+                String subject = String.valueOf(item).trim();
+                if (!subject.isEmpty()) {
+                    banks.add(new HashMap<>(Map.of(
+                            "id", UUID.randomUUID().toString(),
+                            "name", subject + "题库",
+                            "subject", subject,
+                            "enabled", true
+                    )));
+                }
+            }
+            return banks;
+        } catch (Exception e) {
+            return new ArrayList<>();
+        }
+    }
+
+    private void saveQuestionBanks(List<Map<String, Object>> banks) {
+        try {
+            Files.createDirectories(QUESTION_BANKS_FILE.getParent());
+            objectMapper.writerWithDefaultPrettyPrinter().writeValue(QUESTION_BANKS_FILE.toFile(), banks);
+        } catch (IOException e) {
+            throw new RuntimeException("保存题库失败", e);
+        }
+    }
+
+    private List<Map<String, Object>> defaultLoginCarousels() {
+        List<Map<String, Object>> defaults = new ArrayList<>();
+        defaults.add(new HashMap<>(Map.of(
+                "id", UUID.randomUUID().toString(),
+                "title", "在线考试，轻松管理",
+                "subtitle", "支持题库、考试、成绩与错题全流程管理",
+                "imageUrl", "",
+                "enabled", true,
+                "sort", 1
+        )));
+        defaults.add(new HashMap<>(Map.of(
+                "id", UUID.randomUUID().toString(),
+                "title", "诚信考试，从容作答",
+                "subtitle", "为教师和学生提供稳定、安全的线上考试体验",
+                "imageUrl", "",
+                "enabled", true,
+                "sort", 2
+        )));
+        defaults.add(new HashMap<>(Map.of(
+                "id", UUID.randomUUID().toString(),
+                "title", "数据清晰，管理高效",
+                "subtitle", "管理员可统一维护组织架构、学期、公告和考试资源",
+                "imageUrl", "",
+                "enabled", true,
+                "sort", 3
+        )));
+        return defaults;
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> loadLoginCarousels() {
+        try {
+            if (Files.notExists(LOGIN_CAROUSEL_FILE)) {
+                List<Map<String, Object>> defaults = defaultLoginCarousels();
+                saveLoginCarousels(defaults);
+                return defaults;
+            }
+            return objectMapper.readValue(LOGIN_CAROUSEL_FILE.toFile(), new TypeReference<List<Map<String, Object>>>() {});
+        } catch (Exception e) {
+            return defaultLoginCarousels();
+        }
+    }
+
+    private void saveLoginCarousels(List<Map<String, Object>> items) {
+        try {
+            Files.createDirectories(LOGIN_CAROUSEL_FILE.getParent());
+            objectMapper.writerWithDefaultPrettyPrinter().writeValue(LOGIN_CAROUSEL_FILE.toFile(), items);
+        } catch (IOException e) {
+            throw new RuntimeException("保存登录轮播图失败", e);
+        }
+    }
+
+    private int toInt(Object raw, int fallback) {
+        try {
+            return Integer.parseInt(String.valueOf(raw));
+        } catch (Exception e) {
+            return fallback;
+        }
+    }
+
+    private List<Integer> toIntegerList(Object raw) {
+        if (!(raw instanceof List<?> rawList)) {
+            return new ArrayList<>();
+        }
+        List<Integer> result = new ArrayList<>();
+        for (Object item : rawList) {
+            try {
+                result.add(Integer.parseInt(String.valueOf(item)));
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return result;
+    }
+
+    private List<String> toStringList(Object raw) {
+        if (!(raw instanceof List<?> rawList)) {
+            return new ArrayList<>();
+        }
+        List<String> result = new ArrayList<>();
+        for (Object item : rawList) {
+            String value = String.valueOf(item).trim();
+            if (!value.isEmpty()) {
+                result.add(value);
+            }
+        }
+        return result;
+    }
+
+    private void saveUserMeta(SysUser user) {
+        if (user.getUserId() == null) return;
+        if (!"teacher".equals(user.getRole()) || (user.getManagedClassIds() == null && user.getManagedSubjects() == null)) return;
+
+        Map<String, Map<String, Object>> meta = loadProfileMeta();
+        Map<String, Object> userMeta = meta.getOrDefault(String.valueOf(user.getUserId()), new HashMap<>());
+        if (user.getManagedClassIds() != null) {
+            userMeta.put("managedClassIds", user.getManagedClassIds());
+        }
+        if (user.getManagedSubjects() != null) {
+            userMeta.put("managedSubjects", user.getManagedSubjects());
+        }
+        meta.put(String.valueOf(user.getUserId()), userMeta);
+        saveProfileMeta(meta);
     }
 
     private List<Map<String, Object>> defaultOrgStructure() {
@@ -198,10 +384,199 @@ public class AdminServiceImpl implements AdminService {
     @Override
     public Map<String, Object> getDashboardStats() {
         Map<String, Object> stats = new HashMap<>();
-        stats.put("totalUsers", userMapper.selectCount(null));
+        Long totalUsers = userMapper.selectCount(null);
+        Long studentCount = userMapper.selectCount(new QueryWrapper<SysUser>().eq("role", "student"));
+        Long teacherCount = userMapper.selectCount(new QueryWrapper<SysUser>().eq("role", "teacher"));
+        Long adminCount = userMapper.selectCount(new QueryWrapper<SysUser>().eq("role", "admin"));
+        Date now = new Date();
+
+        QueryWrapper<ExamArrangement> activeExamWrapper = new QueryWrapper<>();
+        activeExamWrapper.and(wrapper -> wrapper.eq("status", "running")
+                .or(inner -> inner.le("start_time", now).ge("end_time", now).notIn("status", Arrays.asList("cancelled", "finished", "abnormal"))));
+
+        stats.put("totalUsers", totalUsers);
         stats.put("totalExams", examMapper.selectCount(null));
+        stats.put("activeExams", examMapper.selectCount(activeExamWrapper));
         stats.put("totalQuestions", questionMapper.selectCount(null));
+        stats.put("totalRecords", studentExamRecordMapper.selectCount(null));
+        stats.put("roleDistribution", Arrays.asList(
+                Map.of("role", "学生", "count", studentCount, "percent", totalUsers == 0 ? 0 : Math.round(studentCount * 1000.0 / totalUsers) / 10.0),
+                Map.of("role", "教师", "count", teacherCount, "percent", totalUsers == 0 ? 0 : Math.round(teacherCount * 1000.0 / totalUsers) / 10.0),
+                Map.of("role", "管理员", "count", adminCount, "percent", totalUsers == 0 ? 0 : Math.round(adminCount * 1000.0 / totalUsers) / 10.0)
+        ));
         return stats;
+    }
+
+    @Override
+    public Map<String, Object> getAnalyticsStats() {
+        Map<String, Object> result = new HashMap<>();
+        List<StudentExamRecord> records = studentExamRecordMapper.selectList(null);
+        List<ExamArrangement> exams = examMapper.selectList(null);
+        List<SysClass> classes = classMapper.selectList(null);
+        Map<Integer, ExamArrangement> examMap = new HashMap<>();
+        Map<Integer, SysClass> classMap = new HashMap<>();
+        Map<Integer, TestPaper> paperMap = new HashMap<>();
+
+        for (ExamArrangement exam : exams) {
+            examMap.put(exam.getExamId(), exam);
+            if (exam.getPaperId() != null && !paperMap.containsKey(exam.getPaperId())) {
+                TestPaper paper = testPaperMapper.selectById(exam.getPaperId());
+                if (paper != null) {
+                    paperMap.put(exam.getPaperId(), paper);
+                }
+            }
+        }
+        for (SysClass sysClass : classes) {
+            classMap.put(sysClass.getClassId(), sysClass);
+        }
+
+        long finishedRecords = records.stream().filter(item -> "finished".equals(item.getStatus())).count();
+        long gradingRecords = records.stream().filter(item -> "grading".equals(item.getStatus()) || "pending".equals(item.getStatus())).count();
+        long abnormalRecords = records.stream().filter(item -> "abnormal".equals(item.getStatus())).count();
+        int scoreSum = 0;
+        int scoredCount = 0;
+        int passCount = 0;
+        for (StudentExamRecord record : records) {
+            if (record.getTotalScore() != null) {
+                scoreSum += record.getTotalScore();
+                scoredCount++;
+                if (record.getTotalScore() >= 60) {
+                    passCount++;
+                }
+            }
+        }
+
+        Map<String, Object> summary = new HashMap<>();
+        summary.put("studentCount", userMapper.selectCount(new QueryWrapper<SysUser>().eq("role", "student")));
+        summary.put("teacherCount", userMapper.selectCount(new QueryWrapper<SysUser>().eq("role", "teacher")));
+        summary.put("examCount", exams.size());
+        summary.put("questionCount", questionMapper.selectCount(null));
+        summary.put("submittedCount", records.size());
+        summary.put("finishedCount", finishedRecords);
+        summary.put("gradingCount", gradingRecords);
+        summary.put("abnormalCount", abnormalRecords);
+        summary.put("avgScore", scoredCount == 0 ? 0 : Math.round(scoreSum * 10.0 / scoredCount) / 10.0);
+        summary.put("passRate", scoredCount == 0 ? 0 : Math.round(passCount * 1000.0 / scoredCount) / 10.0);
+        result.put("summary", summary);
+
+        Map<String, Map<String, Object>> subjectStats = new LinkedHashMap<>();
+        for (ExamArrangement exam : exams) {
+            TestPaper paper = exam.getPaperId() == null ? null : paperMap.get(exam.getPaperId());
+            String subject = paper == null || paper.getSubject() == null || paper.getSubject().isBlank() ? "未分类" : paper.getSubject();
+            Map<String, Object> stat = subjectStats.computeIfAbsent(subject, key -> new HashMap<>(Map.of(
+                    "subject", key,
+                    "examCount", 0,
+                    "recordCount", 0,
+                    "scoreSum", 0,
+                    "scoredCount", 0,
+                    "passCount", 0
+            )));
+            stat.put("examCount", (Integer) stat.get("examCount") + 1);
+        }
+        for (StudentExamRecord record : records) {
+            ExamArrangement exam = examMap.get(record.getExamId());
+            TestPaper paper = exam == null || exam.getPaperId() == null ? null : paperMap.get(exam.getPaperId());
+            String subject = paper == null || paper.getSubject() == null || paper.getSubject().isBlank() ? "未分类" : paper.getSubject();
+            Map<String, Object> stat = subjectStats.computeIfAbsent(subject, key -> new HashMap<>(Map.of(
+                    "subject", key,
+                    "examCount", 0,
+                    "recordCount", 0,
+                    "scoreSum", 0,
+                    "scoredCount", 0,
+                    "passCount", 0
+            )));
+            stat.put("recordCount", (Integer) stat.get("recordCount") + 1);
+            if (record.getTotalScore() != null) {
+                stat.put("scoreSum", (Integer) stat.get("scoreSum") + record.getTotalScore());
+                stat.put("scoredCount", (Integer) stat.get("scoredCount") + 1);
+                if (record.getTotalScore() >= 60) {
+                    stat.put("passCount", (Integer) stat.get("passCount") + 1);
+                }
+            }
+        }
+        List<Map<String, Object>> subjectList = new ArrayList<>();
+        for (Map<String, Object> stat : subjectStats.values()) {
+            int subjectScoredCount = (Integer) stat.get("scoredCount");
+            int subjectScoreSum = (Integer) stat.get("scoreSum");
+            int subjectPassCount = (Integer) stat.get("passCount");
+            stat.put("avgScore", subjectScoredCount == 0 ? 0 : Math.round(subjectScoreSum * 10.0 / subjectScoredCount) / 10.0);
+            stat.put("passRate", subjectScoredCount == 0 ? 0 : Math.round(subjectPassCount * 1000.0 / subjectScoredCount) / 10.0);
+            stat.remove("scoreSum");
+            stat.remove("scoredCount");
+            stat.remove("passCount");
+            subjectList.add(stat);
+        }
+        subjectList.sort((a, b) -> Double.compare(Double.parseDouble(String.valueOf(b.get("passRate"))), Double.parseDouble(String.valueOf(a.get("passRate")))));
+        result.put("subjects", subjectList);
+
+        Map<String, Map<String, Object>> departmentStats = new LinkedHashMap<>();
+        for (ExamArrangement exam : exams) {
+            Set<String> departments = new LinkedHashSet<>();
+            if (exam.getTargetClasses() != null) {
+                for (String token : exam.getTargetClasses().split(",")) {
+                    try {
+                        SysClass sysClass = classMap.get(Integer.parseInt(token.trim()));
+                        if (sysClass != null && sysClass.getDepartment() != null) {
+                            departments.add(sysClass.getDepartment());
+                        }
+                    } catch (NumberFormatException ignored) {
+                    }
+                }
+            }
+            if (departments.isEmpty()) {
+                departments.add("未指定学院");
+            }
+            for (String department : departments) {
+                Map<String, Object> stat = departmentStats.computeIfAbsent(department, key -> new HashMap<>(Map.of(
+                        "department", key,
+                        "examCount", 0,
+                        "recordCount", 0
+                )));
+                stat.put("examCount", (Integer) stat.get("examCount") + 1);
+            }
+        }
+        for (StudentExamRecord record : records) {
+            ExamArrangement exam = examMap.get(record.getExamId());
+            if (exam == null || exam.getTargetClasses() == null) continue;
+            Set<String> departments = new LinkedHashSet<>();
+            for (String token : exam.getTargetClasses().split(",")) {
+                try {
+                    SysClass sysClass = classMap.get(Integer.parseInt(token.trim()));
+                    if (sysClass != null && sysClass.getDepartment() != null) {
+                        departments.add(sysClass.getDepartment());
+                    }
+                } catch (NumberFormatException ignored) {
+                }
+            }
+            for (String department : departments) {
+                Map<String, Object> stat = departmentStats.get(department);
+                if (stat != null) {
+                    stat.put("recordCount", (Integer) stat.get("recordCount") + 1);
+                }
+            }
+        }
+        List<Map<String, Object>> departmentList = new ArrayList<>(departmentStats.values());
+        departmentList.sort((a, b) -> Integer.compare((Integer) b.get("examCount"), (Integer) a.get("examCount")));
+        result.put("departments", departmentList);
+
+        List<Map<String, Object>> attentionList = new ArrayList<>();
+        for (StudentExamRecord record : records) {
+            boolean abnormal = "abnormal".equals(record.getStatus());
+            boolean lowScore = record.getTotalScore() != null && record.getTotalScore() < 60;
+            if (!abnormal && !lowScore) continue;
+            ExamArrangement exam = examMap.get(record.getExamId());
+            SysUser student = record.getStudentId() == null ? null : userMapper.selectById(record.getStudentId());
+            Map<String, Object> item = new HashMap<>();
+            item.put("recordId", record.getRecordId());
+            item.put("exam", exam == null ? "未知考试" : exam.getTitle());
+            item.put("student", student == null ? "未知学生" : student.getRealName());
+            item.put("score", record.getTotalScore());
+            item.put("status", abnormal ? "异常结束" : "低于及格线");
+            item.put("reason", abnormal ? "考试过程异常，需要人工复核" : "成绩低于60分，可关注教学或补考安排");
+            attentionList.add(item);
+        }
+        result.put("attentionRecords", attentionList.stream().limit(20).toList());
+        return result;
     }
 
     @Override
@@ -209,7 +584,14 @@ public class AdminServiceImpl implements AdminService {
         QueryWrapper<SysUser> wrapper = new QueryWrapper<>();
         if (role != null && !role.isEmpty()) wrapper.eq("role", role);
         if (keyword != null && !keyword.isEmpty()) wrapper.like("real_name", keyword);
-        return userMapper.selectList(wrapper);
+        List<SysUser> users = userMapper.selectList(wrapper);
+        Map<String, Map<String, Object>> meta = loadProfileMeta();
+        for (SysUser user : users) {
+            Map<String, Object> userMeta = meta.getOrDefault(String.valueOf(user.getUserId()), new HashMap<>());
+            user.setManagedClassIds(toIntegerList(userMeta.get("managedClassIds")));
+            user.setManagedSubjects(toStringList(userMeta.get("managedSubjects")));
+        }
+        return users;
     }
 
     @Override
@@ -258,6 +640,115 @@ public class AdminServiceImpl implements AdminService {
         }
 
         return result;
+    }
+
+    @Override
+    public List<String> getSubjectCategories() {
+        LinkedHashSet<String> subjects = new LinkedHashSet<>();
+        subjects.addAll(loadSubjectCategories());
+        for (Map<String, Object> bank : loadQuestionBanks()) {
+            String subject = String.valueOf(bank.getOrDefault("subject", "")).trim();
+            if (!subject.isEmpty()) {
+                subjects.add(subject);
+            }
+        }
+
+        QueryWrapper<QuestionBank> wrapper = new QueryWrapper<>();
+        wrapper.select("subject").isNotNull("subject");
+        for (QuestionBank question : questionMapper.selectList(wrapper)) {
+            if (question.getSubject() != null && !question.getSubject().isBlank()) {
+                subjects.add(question.getSubject().trim());
+            }
+        }
+
+        return new ArrayList<>(subjects);
+    }
+
+    @Override
+    public void addSubjectCategory(String subject) {
+        String normalized = subject == null ? "" : subject.trim();
+        if (normalized.isEmpty()) {
+            throw new IllegalArgumentException("学科名称不能为空");
+        }
+
+        List<String> subjects = getSubjectCategories();
+        if (!subjects.contains(normalized)) {
+            subjects.add(normalized);
+            saveSubjectCategories(subjects);
+        }
+    }
+
+    @Override
+    public List<Map<String, Object>> getQuestionBanks() {
+        List<Map<String, Object>> banks = loadQuestionBanks();
+        for (String subject : getSubjectCategories()) {
+            boolean exists = banks.stream().anyMatch(bank -> subject.equals(bank.get("subject")));
+            if (!exists) {
+                banks.add(new HashMap<>(Map.of(
+                        "id", UUID.randomUUID().toString(),
+                        "name", subject + "题库",
+                        "subject", subject,
+                        "enabled", true
+                )));
+            }
+        }
+        saveQuestionBanks(banks);
+        return banks;
+    }
+
+    @Override
+    public void addQuestionBank(Map<String, Object> payload) {
+        String name = String.valueOf(payload.getOrDefault("name", "")).trim();
+        String subject = String.valueOf(payload.getOrDefault("subject", "")).trim();
+        if (name.isEmpty() || subject.isEmpty()) {
+            throw new IllegalArgumentException("题库名称和所属学科不能为空");
+        }
+
+        addSubjectCategory(subject);
+        List<Map<String, Object>> banks = loadQuestionBanks();
+        banks.add(new HashMap<>(Map.of(
+                "id", UUID.randomUUID().toString(),
+                "name", name,
+                "subject", subject,
+                "enabled", Boolean.parseBoolean(String.valueOf(payload.getOrDefault("enabled", true)))
+        )));
+        saveQuestionBanks(banks);
+    }
+
+    @Override
+    public void updateQuestionBank(String id, Map<String, Object> payload) {
+        List<Map<String, Object>> banks = loadQuestionBanks();
+        Map<String, Object> bank = banks.stream().filter(item -> id.equals(String.valueOf(item.get("id")))).findFirst().orElse(null);
+        if (bank == null) {
+            throw new IllegalArgumentException("题库不存在");
+        }
+        if (payload.containsKey("name")) {
+            String name = String.valueOf(payload.get("name")).trim();
+            if (!name.isEmpty()) {
+                bank.put("name", name);
+            }
+        }
+        if (payload.containsKey("subject")) {
+            String subject = String.valueOf(payload.get("subject")).trim();
+            if (!subject.isEmpty()) {
+                addSubjectCategory(subject);
+                bank.put("subject", subject);
+            }
+        }
+        if (payload.containsKey("enabled")) {
+            bank.put("enabled", Boolean.parseBoolean(String.valueOf(payload.get("enabled"))));
+        }
+        saveQuestionBanks(banks);
+    }
+
+    @Override
+    public void deleteQuestionBank(String id) {
+        List<Map<String, Object>> banks = loadQuestionBanks();
+        boolean removed = banks.removeIf(item -> id.equals(String.valueOf(item.get("id"))));
+        if (!removed) {
+            throw new IllegalArgumentException("题库不存在");
+        }
+        saveQuestionBanks(banks);
     }
 
     @Override
@@ -345,6 +836,54 @@ public class AdminServiceImpl implements AdminService {
     }
 
     @Override
+    public List<Map<String, Object>> getLoginCarousels(boolean enabledOnly) {
+        List<Map<String, Object>> items = loadLoginCarousels();
+        return items.stream()
+                .filter(item -> !enabledOnly || Boolean.parseBoolean(String.valueOf(item.getOrDefault("enabled", true))))
+                .sorted(Comparator.comparingInt(item -> toInt(item.get("sort"), 0)))
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public void addLoginCarousel(Map<String, Object> payload) {
+        String title = String.valueOf(payload.getOrDefault("title", "")).trim();
+        if (title.isEmpty()) {
+            throw new IllegalArgumentException("轮播标题不能为空");
+        }
+        List<Map<String, Object>> items = loadLoginCarousels();
+        Map<String, Object> item = new HashMap<>();
+        item.put("id", UUID.randomUUID().toString());
+        item.put("title", title);
+        item.put("subtitle", String.valueOf(payload.getOrDefault("subtitle", "")).trim());
+        item.put("imageUrl", String.valueOf(payload.getOrDefault("imageUrl", "")).trim());
+        item.put("enabled", Boolean.parseBoolean(String.valueOf(payload.getOrDefault("enabled", true))));
+        item.put("sort", toInt(payload.get("sort"), items.size() + 1));
+        items.add(item);
+        saveLoginCarousels(items);
+    }
+
+    @Override
+    public void updateLoginCarousel(String id, Map<String, Object> payload) {
+        List<Map<String, Object>> items = loadLoginCarousels();
+        Map<String, Object> item = items.stream().filter(row -> id.equals(String.valueOf(row.get("id")))).findFirst().orElse(null);
+        if (item == null) throw new IllegalArgumentException("轮播图不存在");
+        if (payload.containsKey("title")) item.put("title", String.valueOf(payload.get("title")).trim());
+        if (payload.containsKey("subtitle")) item.put("subtitle", String.valueOf(payload.get("subtitle")).trim());
+        if (payload.containsKey("imageUrl")) item.put("imageUrl", String.valueOf(payload.get("imageUrl")).trim());
+        if (payload.containsKey("enabled")) item.put("enabled", Boolean.parseBoolean(String.valueOf(payload.get("enabled"))));
+        if (payload.containsKey("sort")) item.put("sort", toInt(payload.get("sort"), 0));
+        saveLoginCarousels(items);
+    }
+
+    @Override
+    public void deleteLoginCarousel(String id) {
+        List<Map<String, Object>> items = loadLoginCarousels();
+        boolean removed = items.removeIf(row -> id.equals(String.valueOf(row.get("id"))));
+        if (!removed) throw new IllegalArgumentException("轮播图不存在");
+        saveLoginCarousels(items);
+    }
+
+    @Override
     @SuppressWarnings("unchecked")
     public void addOrgNode(Map<String, Object> payload) {
         List<Map<String, Object>> structure = loadOrgStructure();
@@ -374,7 +913,11 @@ public class AdminServiceImpl implements AdminService {
             return;
         }
 
+        String parentDepartment = payload.get("parentDepartment") == null ? null : payload.get("parentDepartment").toString();
         for (Map<String, Object> department : structure) {
+            if (parentDepartment != null && !parentDepartment.isBlank() && !parentDepartment.equals(department.get("name"))) {
+                continue;
+            }
             Map<String, Object> major = findMajor(department, parent);
             if (major != null) {
                 List<Map<String, Object>> classes = (List<Map<String, Object>>) major.get("classes");
@@ -425,6 +968,41 @@ public class AdminServiceImpl implements AdminService {
         Map<String, Object> classItem = classes.stream().filter(item -> currentClass.equals(item.get("name"))).findFirst().orElse(null);
         if (classItem == null) throw new IllegalArgumentException("班级不存在");
         classItem.put("name", payload.get("name"));
+        saveOrgStructure(structure);
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public void deleteOrgNode(Map<String, Object> payload) {
+        List<Map<String, Object>> structure = loadOrgStructure();
+        String type = payload.get("type").toString();
+        String currentDepartment = payload.get("currentDepartment") != null ? payload.get("currentDepartment").toString() : null;
+        String currentMajor = payload.get("currentMajor") != null ? payload.get("currentMajor").toString() : null;
+        String currentClass = payload.get("currentClass") != null ? payload.get("currentClass").toString() : null;
+
+        if ("院系".equals(type)) {
+            boolean removed = structure.removeIf(item -> currentDepartment.equals(item.get("name")));
+            if (!removed) throw new IllegalArgumentException("学院不存在");
+            saveOrgStructure(structure);
+            return;
+        }
+
+        Map<String, Object> department = findDepartment(structure, currentDepartment);
+        if (department == null) throw new IllegalArgumentException("所属学院不存在");
+        List<Map<String, Object>> majors = (List<Map<String, Object>>) department.get("majors");
+
+        if ("专业".equals(type)) {
+            boolean removed = majors.removeIf(item -> currentMajor.equals(item.get("name")));
+            if (!removed) throw new IllegalArgumentException("专业不存在");
+            saveOrgStructure(structure);
+            return;
+        }
+
+        Map<String, Object> major = findMajor(department, currentMajor);
+        if (major == null) throw new IllegalArgumentException("专业不存在");
+        List<Map<String, Object>> classes = (List<Map<String, Object>>) major.get("classes");
+        boolean removed = classes.removeIf(item -> currentClass.equals(item.get("name")));
+        if (!removed) throw new IllegalArgumentException("班级不存在");
         saveOrgStructure(structure);
     }
 
@@ -539,6 +1117,7 @@ public class AdminServiceImpl implements AdminService {
     public void addUser(SysUser user) {
         user.setPassword(passwordEncoder.encode(user.getPassword()));
         userMapper.insert(user);
+        saveUserMeta(user);
     }
 
     @Override
@@ -549,6 +1128,12 @@ public class AdminServiceImpl implements AdminService {
             user.setPassword(null); // prevent overwriting with null
         }
         userMapper.updateById(user);
+        SysUser current = userMapper.selectById(user.getUserId());
+        if (current != null) {
+            current.setManagedClassIds(user.getManagedClassIds());
+            current.setManagedSubjects(user.getManagedSubjects());
+            saveUserMeta(current);
+        }
     }
 
     @Override

@@ -16,7 +16,7 @@
     <!-- 核心功能快捷入口 -->
     <el-row :gutter="20" class="mb-4">
       <el-col :span="6">
-        <div class="glass-card shortcut-card" @click="$router.push('/student/dashboard')">
+        <div class="glass-card shortcut-card" @click="$router.push('/student/exams')">
           <div class="shortcut-icon" style="background: rgba(56, 189, 248, 0.1); color: #38bdf8;"><i class="el-icon-edit-outline"></i></div>
           <h3>在线考试</h3>
           <p>参加正式测验与考试</p>
@@ -37,7 +37,7 @@
         </div>
       </el-col>
       <el-col :span="6">
-        <div class="glass-card shortcut-card" @click="$router.push('/student/dashboard')">
+        <div class="glass-card shortcut-card" @click="goAnnouncements">
           <div class="shortcut-icon" style="background: rgba(168, 85, 247, 0.1); color: #a855f7;"><i class="el-icon-bell"></i></div>
           <h3>平台公告</h3>
           <p>查看最新系统资讯</p>
@@ -75,7 +75,7 @@
 
       <!-- 系统公告 -->
       <el-col :span="8">
-        <div class="glass-card panel-card">
+        <div ref="announcementPanel" class="glass-card panel-card">
           <div class="panel-header">
             <h3>系统公告</h3>
           </div>
@@ -103,6 +103,7 @@ const user = computed(() => JSON.parse(localStorage.getItem('userInfo') || '{}')
 
 const exams = ref([])
 const stats = ref({ totalExams: 0, avgScore: 0 })
+const announcementPanel = ref(null)
 const pendingCount = computed(() => exams.value.filter(e => e.status === '未参加').length)
 
 const fetchDashboardData = async () => {
@@ -142,6 +143,7 @@ const fetchDashboardData = async () => {
 
 onMounted(() => {
   fetchDashboardData()
+  fetchAnnouncements()
 })
 
 const getStatusTag = (status) => {
@@ -149,13 +151,29 @@ const getStatusTag = (status) => {
   return map[status] || 'info';
 }
 
-const announcements = ref([
-  { id: 1, title: '关于期中考试安排及作弊处罚的通知', date: '11-10', isTop: true, content: '各位同学：本学期期中考试将于下周陆续开始，请注意复习。' },
-  { id: 2, title: '祝各位同学取得好成绩', date: '11-01', isTop: false, content: '放平心态，认真答题。' }
-])
+const announcements = ref([])
+
+const fetchAnnouncements = async () => {
+  try {
+    const res = await request.get('/announcements')
+    announcements.value = res.map(item => ({
+      id: item.id,
+      title: item.title,
+      content: item.content,
+      isTop: item.isTop === 1,
+      date: item.createTime ? new Date(item.createTime).toLocaleDateString().slice(5) : ''
+    }))
+  } catch (e) {
+    announcements.value = []
+  }
+}
 
 const startExam = (id) => {
   router.push(`/student/exam-room/${id}`)
+}
+
+const goAnnouncements = () => {
+  announcementPanel.value?.scrollIntoView({ behavior: 'smooth', block: 'center' })
 }
 
 const viewAnnouncement = (item) => {

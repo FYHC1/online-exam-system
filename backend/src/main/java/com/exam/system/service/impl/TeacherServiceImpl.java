@@ -1,6 +1,8 @@
 package com.exam.system.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.exam.system.entity.*;
 import com.exam.system.mapper.*;
 import com.exam.system.service.TeacherService;
@@ -8,10 +10,17 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 public class TeacherServiceImpl implements TeacherService {
+
+    private static final Path PROFILE_META_FILE = Paths.get("data", "user-profile-meta.json");
+    private static final Path TERM_SETTINGS_FILE = Paths.get("data", "term-settings.json");
 
     @Autowired
     private QuestionBankMapper questionMapper;
@@ -29,21 +38,332 @@ public class TeacherServiceImpl implements TeacherService {
     private SysUserMapper sysUserMapper;
     @Autowired
     private SysClassMapper sysClassMapper;
+    @Autowired
+    private ObjectMapper objectMapper;
 
     @Override
     public Map<String, Object> getDashboardStats(Integer teacherId) {
-        // Mock Implementation for dashboard metrics
+        List<SysClass> managedClasses = getManagedClasses(teacherId);
+        Set<Integer> managedClassIds = managedClasses.stream().map(SysClass::getClassId).collect(Collectors.toCollection(LinkedHashSet::new));
+        List<SysUser> students = getStudentsInClasses(managedClassIds);
+        Set<Integer> studentIds = students.stream().map(SysUser::getUserId).collect(Collectors.toSet());
+        List<Map<String, Object>> recentExams = buildExamSummaries(teacherId, managedClasses, studentIds);
+
         Map<String, Object> stats = new HashMap<>();
-        stats.put("totalExams", examMapper.selectCount(new QueryWrapper<ExamArrangement>().eq("create_by", teacherId)));
+        stats.put("totalStudents", students.size());
+        stats.put("totalExams", recentExams.size());
+        stats.put("pendingGrading", countPendingGrading(teacherId, studentIds));
         stats.put("totalQuestions", questionMapper.selectCount(new QueryWrapper<QuestionBank>().eq("create_by", teacherId)));
-        stats.put("avgPassRate", 85.5); // Derived complex metric
+        stats.put("classes", managedClasses.stream().map(this::classToMap).collect(Collectors.toList()));
+        stats.put("gradeOptions", managedClasses.stream().map(this::getGradeFromClass).filter(Objects::nonNull).distinct().collect(Collectors.toList()));
+        stats.put("subjectOptions", getTeacherSubjects(teacherId));
+        stats.put("recentExams", recentExams);
+        stats.put("distribution", buildScoreDistribution(recentExams));
         return stats;
     }
 
+    @SuppressWarnings("unchecked")
+    private Map<String, Map<String, Object>> loadProfileMeta() {
+        try {
+            if (Files.notExists(PROFILE_META_FILE)) {
+                return new HashMap<>();
+            }
+            return objectMapper.readValue(PROFILE_META_FILE.toFile(), new TypeReference<Map<String, Map<String, Object>>>() {});
+        } catch (Exception e) {
+            return new HashMap<>();
+        }
+    }
+
+    private List<Integer> toIntegerList(Object raw) {
+        if (!(raw instanceof List<?> rawList)) {
+            return new ArrayList<>();
+        }
+        List<Integer> result = new ArrayList<>();
+        for (Object item : rawList) {
+            try {
+                result.add(Integer.parseInt(String.valueOf(item)));
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return result;
+    }
+
+    private List<String> toStringList(Object raw) {
+        if (!(raw instanceof List<?> rawList)) {
+            return new ArrayList<>();
+        }
+        List<String> result = new ArrayList<>();
+        for (Object item : rawList) {
+            String value = String.valueOf(item).trim();
+            if (!value.isEmpty()) {
+                result.add(value);
+            }
+        }
+        return result;
+    }
+
+    private String getCurrentTerm() {
+        try {
+            if (Files.notExists(TERM_SETTINGS_FILE)) {
+                return "";
+            }
+            Map<String, Object> settings = objectMapper.readValue(TERM_SETTINGS_FILE.toFile(), new TypeReference<Map<String, Object>>() {});
+            return String.valueOf(settings.getOrDefault("currentTerm", "")).trim();
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    private String withCurrentTermPrefix(String title) {
+        String normalizedTitle = title == null ? "" : title.trim();
+        String currentTerm = getCurrentTerm();
+        if (currentTerm.isEmpty() || normalizedTitle.startsWith(currentTerm)) {
+            return normalizedTitle;
+        }
+
+        String titleWithoutTerm = normalizedTitle.replaceFirst("^20\\d{2}-20\\d{2}\\s*学年(?:第[一二两]学期|第一学期|第二学期)\\s*", "").trim();
+        return currentTerm + " " + titleWithoutTerm;
+    }
+
+    private List<SysClass> getManagedClasses(Integer teacherId) {
+        Map<String, Object> teacherMeta = loadProfileMeta().getOrDefault(String.valueOf(teacherId), new HashMap<>());
+        LinkedHashSet<Integer> classIds = new LinkedHashSet<>(toIntegerList(teacherMeta.get("managedClassIds")));
+
+        if (classIds.isEmpty()) {
+            SysUser teacher = sysUserMapper.selectById(teacherId);
+            if (teacher != null && teacher.getClassId() != null) {
+                SysClass teacherClass = sysClassMapper.selectById(teacher.getClassId());
+                if (teacherClass != null && teacherClass.getDepartment() != null) {
+                    QueryWrapper<SysClass> wrapper = new QueryWrapper<>();
+                    wrapper.eq("department", teacherClass.getDepartment());
+                    for (SysClass cls : sysClassMapper.selectList(wrapper)) {
+                        classIds.add(cls.getClassId());
+                    }
+                }
+            }
+        }
+
+        if (classIds.isEmpty()) {
+            QueryWrapper<ExamArrangement> wrapper = new QueryWrapper<>();
+            wrapper.eq("create_by", teacherId);
+            for (ExamArrangement exam : examMapper.selectList(wrapper)) {
+                classIds.addAll(parseTargetClassIds(exam.getTargetClasses()));
+            }
+        }
+
+        if (classIds.isEmpty()) {
+            return sysClassMapper.selectList(new QueryWrapper<SysClass>().orderByAsc("class_id"));
+        }
+
+        return classIds.stream()
+                .map(sysClassMapper::selectById)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+    }
+
+    private List<Integer> parseTargetClassIds(String targetClasses) {
+        List<Integer> result = new ArrayList<>();
+        if (targetClasses == null || targetClasses.isBlank()) {
+            return result;
+        }
+        for (String token : targetClasses.split(",")) {
+            String value = token.trim();
+            if (value.isEmpty()) continue;
+            try {
+                result.add(Integer.parseInt(value));
+            } catch (NumberFormatException e) {
+                QueryWrapper<SysClass> wrapper = new QueryWrapper<>();
+                wrapper.eq("class_name", value).last("LIMIT 1");
+                SysClass cls = sysClassMapper.selectOne(wrapper);
+                if (cls != null) {
+                    result.add(cls.getClassId());
+                }
+            }
+        }
+        return result;
+    }
+
+    private List<SysUser> getStudentsInClasses(Set<Integer> classIds) {
+        if (classIds.isEmpty()) {
+            return new ArrayList<>();
+        }
+        QueryWrapper<SysUser> wrapper = new QueryWrapper<>();
+        wrapper.eq("role", "student").in("class_id", classIds).eq("status", 1);
+        return sysUserMapper.selectList(wrapper);
+    }
+
+    private Long countPendingGrading(Integer teacherId, Set<Integer> studentIds) {
+        if (studentIds.isEmpty()) {
+            return 0L;
+        }
+        List<Integer> examIds = examMapper.selectList(new QueryWrapper<ExamArrangement>().eq("create_by", teacherId))
+                .stream().map(ExamArrangement::getExamId).collect(Collectors.toList());
+        if (examIds.isEmpty()) {
+            return 0L;
+        }
+        QueryWrapper<StudentExamRecord> wrapper = new QueryWrapper<>();
+        wrapper.in("exam_id", examIds).in("student_id", studentIds).eq("status", "grading");
+        return recordMapper.selectCount(wrapper);
+    }
+
+    private List<Map<String, Object>> buildExamSummaries(Integer teacherId, List<SysClass> managedClasses, Set<Integer> studentIds) {
+        Set<Integer> managedClassIds = managedClasses.stream().map(SysClass::getClassId).collect(Collectors.toSet());
+        QueryWrapper<ExamArrangement> wrapper = new QueryWrapper<>();
+        wrapper.eq("create_by", teacherId).orderByDesc("start_time");
+        List<Map<String, Object>> result = new ArrayList<>();
+
+        for (ExamArrangement exam : examMapper.selectList(wrapper)) {
+            List<Integer> targetClassIds = parseTargetClassIds(exam.getTargetClasses());
+            List<SysClass> visibleClasses = targetClassIds.stream()
+                    .filter(managedClassIds::contains)
+                    .map(sysClassMapper::selectById)
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toList());
+            if (visibleClasses.isEmpty()) {
+                continue;
+            }
+
+            Set<Integer> targetStudentIds = getStudentsInClasses(targetClassIds.stream().filter(managedClassIds::contains).collect(Collectors.toSet()))
+                    .stream().map(SysUser::getUserId).filter(studentIds::contains).collect(Collectors.toSet());
+            List<StudentExamRecord> records = recordMapper.selectList(new QueryWrapper<StudentExamRecord>().eq("exam_id", exam.getExamId()));
+            List<StudentExamRecord> visibleRecords = records.stream()
+                    .filter(record -> targetStudentIds.contains(record.getStudentId()))
+                    .collect(Collectors.toList());
+
+            TestPaper paper = paperMapper.selectById(exam.getPaperId());
+            int passScore = paper != null && paper.getPassScore() != null ? paper.getPassScore() : 60;
+            long finishedCount = visibleRecords.stream().filter(record -> "finished".equals(record.getStatus())).count();
+            long passedCount = visibleRecords.stream().filter(record -> "finished".equals(record.getStatus()) && record.getTotalScore() != null && record.getTotalScore() >= passScore).count();
+            double avgScore = visibleRecords.stream()
+                    .filter(record -> "finished".equals(record.getStatus()) && record.getTotalScore() != null)
+                    .mapToInt(StudentExamRecord::getTotalScore)
+                    .average()
+                    .orElse(0D);
+            int[] scoreBuckets = countScoreBuckets(visibleRecords);
+
+            Map<String, Object> item = new HashMap<>();
+            item.put("examId", exam.getExamId());
+            item.put("title", exam.getTitle());
+            item.put("term", resolveTermName(exam.getStartTime(), exam.getTitle()));
+            item.put("grade", visibleClasses.stream().map(this::getGradeFromClass).filter(Objects::nonNull).distinct().collect(Collectors.joining("、")));
+            item.put("subject", paper != null ? paper.getSubject() : "未分类");
+            item.put("class", visibleClasses.stream().map(SysClass::getClassName).collect(Collectors.joining("、")));
+            item.put("classIds", visibleClasses.stream().map(SysClass::getClassId).collect(Collectors.toList()));
+            item.put("attendRate", targetStudentIds.isEmpty() ? 0 : Math.round(visibleRecords.size() * 100.0 / targetStudentIds.size()));
+            item.put("passRate", finishedCount == 0 ? 0 : Math.round(passedCount * 100.0 / finishedCount));
+            item.put("avgScore", String.format(Locale.ROOT, "%.1f", avgScore));
+            item.put("finishedCount", finishedCount);
+            item.put("submittedCount", visibleRecords.size());
+            item.put("targetStudentCount", targetStudentIds.size());
+            item.put("scoreBuckets", Arrays.stream(scoreBuckets).boxed().collect(Collectors.toList()));
+            result.add(item);
+        }
+        return result;
+    }
+
+    private int[] countScoreBuckets(List<StudentExamRecord> records) {
+        int[] counts = new int[5];
+        for (StudentExamRecord record : records) {
+            if (!"finished".equals(record.getStatus())) continue;
+            int score = record.getTotalScore() != null ? record.getTotalScore() : 0;
+            if (score >= 90) counts[0]++;
+            else if (score >= 80) counts[1]++;
+            else if (score >= 70) counts[2]++;
+            else if (score >= 60) counts[3]++;
+            else counts[4]++;
+        }
+        return counts;
+    }
+
+    private String resolveTermName(Date date, String title) {
+        if (title != null) {
+            java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("^(.*?学期)").matcher(title);
+            if (matcher.find()) return matcher.group(1);
+        }
+        if (date == null) return "未划分学期";
+        Calendar calendar = Calendar.getInstance();
+        calendar.setTime(date);
+        int year = calendar.get(Calendar.YEAR);
+        int month = calendar.get(Calendar.MONTH) + 1;
+        int startYear = month >= 9 ? year : year - 1;
+        String term = (month >= 9 || month == 1) ? "第一学期" : "第二学期";
+        return startYear + "-" + (startYear + 1) + " 学年" + term;
+    }
+
+    private Map<String, Object> classToMap(SysClass cls) {
+        Map<String, Object> item = new HashMap<>();
+        item.put("classId", cls.getClassId());
+        item.put("className", cls.getClassName());
+        item.put("major", cls.getMajor());
+        item.put("department", cls.getDepartment());
+        item.put("grade", getGradeFromClass(cls));
+        return item;
+    }
+
+    private String getGradeFromClass(SysClass cls) {
+        if (cls == null || cls.getCreateTime() == null) return null;
+        Calendar calendar = Calendar.getInstance();
+        calendar.setTime(cls.getCreateTime());
+        return calendar.get(Calendar.YEAR) + "级";
+    }
+
+    private List<String> getTeacherSubjects(Integer teacherId) {
+        List<String> managedSubjects = toStringList(loadProfileMeta().getOrDefault(String.valueOf(teacherId), new HashMap<>()).get("managedSubjects"));
+        if (!managedSubjects.isEmpty()) {
+            return managedSubjects;
+        }
+
+        LinkedHashSet<String> subjects = new LinkedHashSet<>();
+        for (QuestionBank question : questionMapper.selectList(new QueryWrapper<QuestionBank>().eq("create_by", teacherId))) {
+            if (question.getSubject() != null) subjects.add(question.getSubject());
+        }
+        for (TestPaper paper : paperMapper.selectList(new QueryWrapper<TestPaper>().eq("create_by", teacherId))) {
+            if (paper.getSubject() != null) subjects.add(paper.getSubject());
+        }
+        return new ArrayList<>(subjects);
+    }
+
+    private List<Map<String, Object>> buildScoreDistribution(List<Map<String, Object>> recentExams) {
+        int[] counts = new int[5];
+        for (Map<String, Object> exam : recentExams) {
+            Object buckets = exam.get("scoreBuckets");
+            if (buckets instanceof List<?> list) {
+                for (int i = 0; i < Math.min(counts.length, list.size()); i++) {
+                    counts[i] += Integer.parseInt(String.valueOf(list.get(i)));
+                }
+            }
+        }
+        int total = Arrays.stream(counts).sum();
+        String[] ranges = {"90-100", "80-89", "70-79", "60-69", "不及格"};
+        String[] colors = {"var(--primary-color)", "var(--success-color)", "var(--warning-color)", "#f97316", "var(--danger-color)"};
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (int i = 0; i < ranges.length; i++) {
+            Map<String, Object> item = new HashMap<>();
+            item.put("range", ranges[i]);
+            item.put("count", counts[i]);
+            item.put("percent", total == 0 ? 0 : Math.round(counts[i] * 1000.0 / total) / 10.0);
+            item.put("color", colors[i]);
+            result.add(item);
+        }
+        return result;
+    }
+
     @Override
-    public List<QuestionBank> getQuestions(String subject, Integer difficulty, String type, String keyword) {
+    public List<QuestionBank> getQuestions(Integer teacherId, String subject, Integer difficulty, String type, String keyword) {
+        List<String> managedSubjects = getTeacherSubjects(teacherId);
+        if (managedSubjects.isEmpty()) {
+            return new ArrayList<>();
+        }
+        if (subject != null && !subject.isEmpty() && !managedSubjects.contains(subject)) {
+            return new ArrayList<>();
+        }
+
         QueryWrapper<QuestionBank> wrapper = new QueryWrapper<>();
-        if (subject != null && !subject.isEmpty()) wrapper.eq("subject", subject);
+        if (subject != null && !subject.isEmpty()) {
+            wrapper.eq("subject", subject);
+        } else {
+            wrapper.in("subject", managedSubjects);
+        }
         if (difficulty != null) wrapper.eq("difficulty", difficulty);
         if (type != null && !type.isEmpty()) wrapper.eq("type", type);
         if (keyword != null && !keyword.isEmpty()) wrapper.like("title", keyword);
@@ -52,6 +372,9 @@ public class TeacherServiceImpl implements TeacherService {
 
     @Override
     public void addQuestion(QuestionBank question) {
+        if (question.getCreateBy() != null && !getTeacherSubjects(question.getCreateBy()).contains(question.getSubject())) {
+            throw new IllegalArgumentException("只能维护本人负责学科的题库");
+        }
         questionMapper.insert(question);
     }
 
@@ -68,13 +391,17 @@ public class TeacherServiceImpl implements TeacherService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void publishExam(String title, String subject, String targetClasses, Integer duration, Integer createBy, Map<String, Integer> autoConfig, String paperMode, List<Map<String, Object>> manualQuestions, String startTimeStr, String endTimeStr) {
+        String examTitle = withCurrentTermPrefix(title);
+        if (!getTeacherSubjects(createBy).contains(subject)) {
+            throw new IllegalArgumentException("只能发布本人负责学科的考试");
+        }
         if (!"manual".equals(paperMode)) {
             validateAutoConfig(subject, autoConfig);
         }
 
         // 1. Create Paper
         TestPaper paper = new TestPaper();
-        paper.setPaperName(title + " 试卷");
+        paper.setPaperName(examTitle + " 试卷");
         paper.setSubject(subject);
         paper.setTotalScore(100);
         paper.setPassScore(60);
@@ -119,7 +446,7 @@ public class TeacherServiceImpl implements TeacherService {
 
         // 3. Create Exam Arrangement
         ExamArrangement exam = new ExamArrangement();
-        exam.setTitle(title);
+        exam.setTitle(examTitle);
         exam.setPaperId(paper.getPaperId());
         exam.setTargetClasses(targetClasses);
         exam.setStatus("pending");
@@ -192,6 +519,10 @@ public class TeacherServiceImpl implements TeacherService {
 
     @Override
     public List<Map<String, Object>> getExamsByTeacher(Integer teacherId) {
+        List<String> managedSubjects = getTeacherSubjects(teacherId);
+        if (managedSubjects.isEmpty()) {
+            return new ArrayList<>();
+        }
         QueryWrapper<ExamArrangement> wrapper = new QueryWrapper<>();
         wrapper.eq("create_by", teacherId).orderByDesc("create_time");
         List<ExamArrangement> exams = examMapper.selectList(wrapper);
@@ -210,6 +541,9 @@ public class TeacherServiceImpl implements TeacherService {
             item.put("createTime", exam.getCreateTime());
 
             TestPaper paper = paperMapper.selectById(exam.getPaperId());
+            if (paper == null || !managedSubjects.contains(paper.getSubject())) {
+                continue;
+            }
             item.put("subject", paper != null ? paper.getSubject() : null);
             item.put("duration", paper != null ? paper.getDuration() : null);
 

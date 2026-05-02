@@ -2,11 +2,13 @@ package com.exam.system.controller;
 
 import com.exam.system.common.Result;
 import com.exam.system.entity.SysUser;
+import com.exam.system.service.AdminService;
 import com.exam.system.service.AuthService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
+import java.util.List;
 
 @RestController
 @RequestMapping("/auth")
@@ -14,6 +16,9 @@ public class AuthController {
 
     @Autowired
     private AuthService authService;
+
+    @Autowired
+    private AdminService adminService;
 
     @GetMapping("/captcha")
     public Result<Map<String, String>> getCaptcha() {
@@ -67,5 +72,10 @@ public class AuthController {
         } catch (Exception e) {
             return Result.error(e.getMessage());
         }
+    }
+
+    @GetMapping("/login-carousels")
+    public Result<List<Map<String, Object>>> getLoginCarousels() {
+        return Result.success(adminService.getLoginCarousels(true));
     }
 }

@@ -25,18 +25,18 @@
         <div class="user-profile">
           <el-dropdown trigger="click">
             <span class="el-dropdown-link name-trigger" style="display:flex; align-items:center; cursor:pointer; outline:none;">
-              <el-avatar :size="32" style="background:var(--danger-color);color:white;margin-right:8px;">A</el-avatar>
-              <span class="name">超级管理员</span>
+              <el-avatar :size="32" :src="user.avatar" style="background:var(--danger-color);color:white;margin-right:8px;">{{ user.realName?.charAt(0) || 'A' }}</el-avatar>
+              <span class="name">{{ user.realName || '超级管理员' }}</span>
             </span>
             <template #dropdown>
               <el-dropdown-menu>
                 <el-dropdown-item disabled>
                   <div style="text-align:center; padding: 5px 0;">
-                    <div style="font-weight:bold; color:var(--text-primary);">Admin</div>
-                    <el-tag size="small" type="danger" style="margin-top:5px;">系统超管</el-tag>
-                  </div>
-                </el-dropdown-item>
-                <el-dropdown-item divided>系统资料</el-dropdown-item>
+                     <div style="font-weight:bold; color:var(--text-primary);">{{ user.realName || 'Admin' }}</div>
+                     <el-tag size="small" type="danger" style="margin-top:5px;">系统超管</el-tag>
+                   </div>
+                 </el-dropdown-item>
+                <el-dropdown-item divided @click="$router.push('/admin/profile')">个人资料</el-dropdown-item>
                 <el-dropdown-item @click="logout" divided style="color: var(--danger-color)">退出登录</el-dropdown-item>
               </el-dropdown-menu>
             </template>
@@ -61,6 +61,7 @@ import { useRouter, useRoute } from 'vue-router'
 
 const router = useRouter()
 const route = useRoute()
+const user = computed(() => JSON.parse(localStorage.getItem('userInfo') || '{}'))
 
 const logout = () => {
   localStorage.clear()

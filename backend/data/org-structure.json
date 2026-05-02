@@ -38,4 +38,14 @@
   "archived" : false,
   "majors" : [ ],
   "name" : "人工智能学院"
+}, {
+  "archived" : false,
+  "majors" : [ {
+    "classes" : [ {
+      "name" : "环境学1班",
+      "count" : 21
+    } ],
+    "name" : "环境学"
+  } ],
+  "name" : "环境教育学院"
 } ]

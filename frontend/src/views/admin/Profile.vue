@@ -1,15 +1,15 @@
 <template>
   <div class="profile-container">
     <div class="glass-card mb-4" style="padding: 20px;">
-      <h2>教师个人资料</h2>
-      <p style="color: var(--text-secondary); margin-top: 8px;">管理头像、联系方式和登录密码，并查看当前关联的负责班级与负责学科。</p>
+      <h2>管理员个人资料</h2>
+      <p style="color: var(--text-secondary); margin-top: 8px;">维护管理员头像、联系方式和登录密码。</p>
     </div>
 
     <div class="glass-card p-4 main-content">
       <el-row :gutter="40" style="width: 100%; align-items: stretch;">
         <el-col :span="8" class="text-center">
           <div class="avatar-section">
-            <el-avatar :size="120" class="profile-avatar" :src="form.avatar">{{ form.realName?.charAt(0) || 'T' }}</el-avatar>
+            <el-avatar :size="120" class="profile-avatar" :src="form.avatar">{{ form.realName?.charAt(0) || 'A' }}</el-avatar>
             <el-upload class="upload-btn" action="#" :auto-upload="false" :show-file-list="false" @change="handleAvatarChange" accept="image/jpeg,image/png,image/gif">
               <el-button type="primary" plain round>更换头像</el-button>
             </el-upload>
@@ -19,35 +19,10 @@
 
         <el-col :span="16">
           <el-form label-width="110px" :model="form" class="profile-form" label-position="left">
-            <el-form-item label="姓名">
-              <el-input :model-value="form.realName" disabled />
-            </el-form-item>
-            <el-form-item label="教师账号">
-              <el-input :model-value="form.username" disabled />
-            </el-form-item>
-            <el-form-item label="所属学院">
-              <el-input :model-value="form.department || '未分配'" disabled />
-            </el-form-item>
-            <el-form-item label="负责班级">
-              <div class="tag-list" v-if="form.managedClasses.length">
-                <el-tag v-for="cls in form.managedClasses" :key="cls.classId" type="success">
-                  {{ [cls.grade, cls.major, cls.className].filter(Boolean).join(' / ') }}
-                </el-tag>
-              </div>
-              <el-input v-else model-value="未关联负责班级" disabled />
-            </el-form-item>
-            <el-form-item label="负责学科">
-              <div class="tag-list" v-if="form.subjects.length">
-                <el-tag v-for="subject in form.subjects" :key="subject" type="primary">{{ subject }}</el-tag>
-              </div>
-              <el-input v-else model-value="暂无负责学科" disabled />
-            </el-form-item>
-            <el-form-item label="联系方式">
-              <el-input v-model="form.phone" placeholder="请输入手机号码或联系方式" />
-            </el-form-item>
-            <el-form-item class="action-buttons">
-              <el-button type="primary" :loading="saving" @click="saveProfile">保存资料</el-button>
-            </el-form-item>
+            <el-form-item label="姓名"><el-input :model-value="form.realName" disabled /></el-form-item>
+            <el-form-item label="账号"><el-input :model-value="form.username" disabled /></el-form-item>
+            <el-form-item label="联系方式"><el-input v-model="form.phone" placeholder="请输入手机号或联系方式" /></el-form-item>
+            <el-form-item class="action-buttons"><el-button type="primary" :loading="saving" @click="saveProfile">保存资料</el-button></el-form-item>
           </el-form>
         </el-col>
       </el-row>
@@ -70,7 +45,7 @@ import { reactive, ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import request from '@/utils/request'
 
-const form = reactive({ username: '', realName: '', department: '', phone: '', avatar: '', managedClasses: [], subjects: [] })
+const form = reactive({ username: '', realName: '', phone: '', avatar: '' })
 const passwordForm = reactive({ oldPassword: '', newPassword: '', confirmPassword: '' })
 const saving = ref(false)
 const changingPassword = ref(false)
@@ -79,20 +54,12 @@ const syncLocalUser = () => {
   const localUser = JSON.parse(localStorage.getItem('userInfo') || '{}')
   localUser.realName = form.realName
   localUser.avatar = form.avatar
-  localUser.department = form.department
-  localUser.managedClasses = form.managedClasses
-  localUser.subjects = form.subjects
   localStorage.setItem('userInfo', JSON.stringify(localUser))
 }
 
 const loadProfile = async () => {
   const data = await request.get('/profile/me')
-  Object.assign(form, {
-    ...data,
-    managedClasses: data.managedClasses || [],
-    subjects: data.subjects || []
-  })
-  syncLocalUser()
+  Object.assign(form, data)
 }
 
 onMounted(async () => {
@@ -166,11 +133,10 @@ const changePassword = async () => {
 .p-4 { padding: 40px; }
 .main-content { min-height: 320px; display: flex; align-items: stretch; }
 .avatar-section { display:flex; flex-direction:column; align-items:center; justify-content:center; padding-right:40px; border-right:1px dashed var(--glass-border); height:100%; }
-.profile-avatar { background:var(--primary-color); font-size:40px; color:#fff; margin-bottom:24px; box-shadow:0 8px 16px rgba(0,0,0,.1); border:4px solid rgba(255,255,255,.5); }
+.profile-avatar { background:var(--danger-color); font-size:40px; color:#fff; margin-bottom:24px; box-shadow:0 8px 16px rgba(0,0,0,.1); border:4px solid rgba(255,255,255,.5); }
 .upload-btn { margin-bottom: 12px; }
 .tip { font-size:13px; color:var(--text-secondary); text-align:center; line-height:1.6; }
 .profile-form, .password-form { max-width: 520px; }
-.tag-list { display: flex; flex-wrap: wrap; gap: 8px; min-height: 32px; align-items: center; }
 :deep(.el-input__wrapper) { background-color: rgba(255,255,255,.4) !important; box-shadow:none !important; border:1px solid var(--glass-border); }
 :deep(.el-input.is-disabled .el-input__wrapper) { background-color: rgba(0,0,0,.05) !important; }
 .action-buttons { margin-top: 18px; }

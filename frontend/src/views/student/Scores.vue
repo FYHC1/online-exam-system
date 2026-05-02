@@ -23,8 +23,7 @@
         <el-form-item label="选择学期：">
           <el-select v-model="filters.term" placeholder="全部学期">
             <el-option label="全部学期" value="" />
-            <el-option label="2023-2024 第一学期" value="2023-2024 第一学期" />
-            <el-option label="2022-2023 第二学期" value="2022-2023 第二学期" />
+            <el-option v-for="term in availableTerms" :key="term.name" :label="term.name" :value="term.name" />
           </el-select>
         </el-form-item>
       </el-form>
@@ -54,6 +53,9 @@ import { ElMessage } from 'element-plus'
 
 const filters = ref({ term: '' })
 const scoreRecords = ref([])
+const availableTerms = ref([])
+const termSettings = ref([])
+const STUDY_YEARS = 4
 
 const avgScore = computed(() => {
   if (scoreRecords.value.length === 0) return 0;
@@ -61,16 +63,53 @@ const avgScore = computed(() => {
   return total / scoreRecords.value.length;
 })
 
+const extractEnrollmentYear = (user = {}) => {
+  const candidates = [user.enrollmentYear, user.grade, user.username]
+  for (const item of candidates) {
+    const match = String(item || '').match(/20\d{2}/)
+    if (match) return Number(match[0])
+  }
+  return null
+}
+
+const loadEnrollmentYear = async () => {
+  const localUser = JSON.parse(localStorage.getItem('userInfo') || '{}')
+  const localYear = extractEnrollmentYear(localUser)
+  if (localYear) return localYear
+
+  try {
+    const profile = await request.get('/profile/me')
+    const mergedUser = { ...localUser, ...profile }
+    localStorage.setItem('userInfo', JSON.stringify(mergedUser))
+    return extractEnrollmentYear(mergedUser) || new Date().getFullYear()
+  } catch {
+    return new Date().getFullYear()
+  }
+}
+
+const buildStudyTerms = (enrollmentYear) => {
+  const terms = []
+  for (let year = enrollmentYear; year < enrollmentYear + STUDY_YEARS; year++) {
+    terms.push({ name: `${year}-${year + 1} 学年第一学期`, range: [`${year}-09-01`, `${year + 1}-01-31`] })
+    terms.push({ name: `${year}-${year + 1} 学年第二学期`, range: [`${year + 1}-02-01`, `${year + 1}-08-31`] })
+  }
+  return terms
+}
+
+const filterStudyTerms = (terms, enrollmentYear) => {
+  const graduationStartYear = enrollmentYear + STUDY_YEARS - 1
+  return terms.filter(term => {
+    const startYear = Number(String(term.name).match(/^(20\d{2})-/)?.[1])
+    return !Number.isNaN(startYear) && startYear >= enrollmentYear && startYear <= graduationStartYear
+  })
+}
+
 const fetchRecords = async () => {
   try {
     const res = await request.get('/student/records')
     scoreRecords.value = res.filter(r => r.record.status === 'finished').map(r => {
-      let termVal = '2023-2024 第一学期'
-      if (r.examTitle && r.examTitle.includes('2022')) termVal = '2022-2023 第二学期'
-      else {
-        const match = r.examTitle ? r.examTitle.match(/^(.+?学期)/) : null
-        if (match) termVal = match[1]
-      }
+      const recordDate = r.examStartTime || r.record.createTime || null
+      let termVal = resolveTermByDate(recordDate, r.examTitle)
       
       const cleanTitle = r.examTitle ? r.examTitle.replace(/^.+?学期/, '').trim() : '未知考试'
 
@@ -88,8 +127,55 @@ const fetchRecords = async () => {
   }
 }
 
-onMounted(() => {
-  fetchRecords()
+const loadAvailableTerms = async () => {
+  const enrollmentYear = await loadEnrollmentYear()
+  try {
+    const termData = await request.get('/profile/terms')
+    const terms = termData.terms || []
+    termSettings.value = terms
+    availableTerms.value = filterStudyTerms(terms, enrollmentYear)
+  } catch {
+    const fallbackTerms = buildStudyTerms(enrollmentYear)
+    availableTerms.value = fallbackTerms
+    termSettings.value = fallbackTerms
+  }
+}
+
+const resolveTermByDate = (dateValue, title) => {
+  const rawDateText = typeof dateValue === 'string' ? dateValue.slice(0, 10) : ''
+  const date = dateValue ? new Date(dateValue) : null
+  if (rawDateText || (date && !Number.isNaN(date.getTime()))) {
+    const dateText = rawDateText || [
+      date.getFullYear(),
+      String(date.getMonth() + 1).padStart(2, '0'),
+      String(date.getDate()).padStart(2, '0')
+    ].join('-')
+    const matchedTerm = termSettings.value.find(term => {
+      if (!term.range || term.range.length < 2) return false
+      return dateText >= term.range[0] && dateText <= term.range[1]
+    })
+    if (matchedTerm) {
+      return matchedTerm.name
+    }
+  }
+
+  const match = title ? title.match(/^(.+?学期)/) : null
+  if (match) return match[1]
+
+  if (date && !Number.isNaN(date.getTime())) {
+    const year = date.getFullYear()
+    const month = date.getMonth() + 1
+    const academicStartYear = month >= 9 ? year : year - 1
+    const termName = (month >= 9 || month === 1) ? '第一学期' : '第二学期'
+    return `${academicStartYear}-${academicStartYear + 1} 学年${termName}`
+  }
+
+  return '未划分学期'
+}
+
+onMounted(async () => {
+  await loadAvailableTerms()
+  await fetchRecords()
 })
 
 const filteredRecords = computed(() => {

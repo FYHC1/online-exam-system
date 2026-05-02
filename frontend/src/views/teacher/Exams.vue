@@ -33,8 +33,7 @@
         <el-form :inline="true" :model="filters">
           <el-form-item label="学期：">
             <el-select v-model="filters.term" placeholder="全部学期" clearable style="width: 150px">
-              <el-option label="23-24第二学期" value="23-24第二学期" />
-              <el-option label="23-24第一学期" value="23-24第一学期" />
+              <el-option v-for="term in termOptions" :key="term" :label="term" :value="term" />
             </el-select>
           </el-form-item>
           <el-form-item label="考试状态：">
@@ -46,16 +45,12 @@
           </el-form-item>
           <el-form-item label="年级：">
             <el-select v-model="filters.grade" placeholder="全部年级" clearable style="width: 150px">
-              <el-option label="2021级" value="2021级" />
-              <el-option label="2022级" value="2022级" />
-              <el-option label="2023级" value="2023级" />
+              <el-option v-for="grade in gradeOptions" :key="grade" :label="grade" :value="grade" />
             </el-select>
           </el-form-item>
           <el-form-item label="班级：">
             <el-select v-model="filters.class" placeholder="全部班级" clearable style="width: 150px">
-              <el-option label="1班" value="1班" />
-              <el-option label="2班" value="2班" />
-              <el-option label="软件1班" value="软件1班" />
+              <el-option v-for="className in classOptions" :key="className" :label="className" :value="className" />
             </el-select>
           </el-form-item>
           <el-form-item style="margin-left: auto; margin-right: 0;">
@@ -273,29 +268,92 @@ const openPublishDialog = () => {
   loadQuestionAvailability()
 }
 
-const subjects = ref([
-  { id: 1, name: '高等数学', activeExams: 0, icon: 'el-icon-odometer', color: 'rgba(56, 189, 248, 0.2)' },
-  { id: 2, name: '大学英语', activeExams: 0, icon: 'el-icon-chat-line-round', color: 'rgba(250, 204, 21, 0.2)' },
-  { id: 3, name: 'JavaWeb', activeExams: 0, icon: 'el-icon-monitor', color: 'rgba(16, 185, 129, 0.2)' },
-  { id: 4, name: '数据结构', activeExams: 0, icon: 'el-icon-connection', color: 'rgba(168, 85, 247, 0.2)' }
-])
+const subjectPalette = [
+  { icon: 'el-icon-odometer', color: 'rgba(56, 189, 248, 0.2)' },
+  { icon: 'el-icon-chat-line-round', color: 'rgba(250, 204, 21, 0.2)' },
+  { icon: 'el-icon-monitor', color: 'rgba(16, 185, 129, 0.2)' },
+  { icon: 'el-icon-connection', color: 'rgba(168, 85, 247, 0.2)' }
+]
+const subjects = ref([])
+const managedClasses = ref([])
+const targetOptions = ref([])
 
-const targetOptions = ref([
-  { value: '2023级', label: '2023级', children: [ { value: '1班', label: '1班' }, { value: '2班', label: '2班' } ] },
-  { value: '2022级', label: '2022级', children: [ { value: '软件1班', label: '软件1班' } ] }
-])
+const getClassGrade = (cls) => cls?.grade || (cls?.createTime ? `${new Date(cls.createTime).getFullYear()}级` : '')
+
+const termOptions = computed(() => [...new Set(allExams.value.map(item => item.term).filter(Boolean))])
+const gradeOptions = computed(() => [...new Set(managedClasses.value.map(getClassGrade).filter(Boolean))])
+const classOptions = computed(() => [...new Set(managedClasses.value.map(item => item.className).filter(Boolean))])
+
+const buildTargetOptions = () => {
+  const gradeMap = new Map()
+  managedClasses.value.forEach(cls => {
+    const grade = getClassGrade(cls) || '未划分年级'
+    if (!gradeMap.has(grade)) {
+      gradeMap.set(grade, { value: grade, label: grade, children: [] })
+    }
+    gradeMap.get(grade).children.push({ value: cls.classId, label: cls.className })
+  })
+  targetOptions.value = Array.from(gradeMap.values())
+}
 
 const buildTargetPaths = (targetClasses) => {
   if (!targetClasses) return []
 
   return targetClasses.split(',').map(targetClass => {
-    const className = targetClass.trim()
-    const grade = targetOptions.value.find(option => option.children?.some(child => child.value === className))
-    return grade ? [grade.value, className] : [className]
+    const classId = Number(targetClass.trim())
+    const cls = managedClasses.value.find(item => item.classId === classId || item.className === targetClass.trim())
+    const grade = cls ? getClassGrade(cls) : ''
+    return cls && grade ? [grade, cls.classId] : [targetClass.trim()]
   })
 }
 
 const allExams = ref([])
+
+const loadManagedSubjects = async () => {
+  const profile = await request.get('/profile/me')
+  managedClasses.value = profile.managedClasses || []
+  buildTargetOptions()
+  subjects.value = (profile.subjects || []).map((name, index) => ({
+    id: index + 1,
+    name,
+    activeExams: 0,
+    ...subjectPalette[index % subjectPalette.length]
+  }))
+}
+
+const getTargetClasses = (targetClasses) => {
+  if (!targetClasses) return []
+  return targetClasses.split(',').map(token => {
+    const value = token.trim()
+    const id = Number(value)
+    return managedClasses.value.find(cls => cls.classId === id || cls.className === value)
+  }).filter(Boolean)
+}
+
+const resolveTermByDate = (dateValue, title) => {
+  const titleText = String(title || '')
+  const titleTermMatch = titleText.match(/(20\d{2})-(20\d{2})\s*(?:学年)?\s*(第[一二两]学期|第一学期|第二学期)/)
+  if (titleTermMatch) {
+    const termName = titleTermMatch[3].replace('两', '二')
+    return `${titleTermMatch[1]}-${titleTermMatch[2]} 学年${termName}`
+  }
+
+  const shortTermMatch = titleText.match(/(\d{2})-(\d{2})\s*(?:学年)?\s*(第[一二两]学期|第一学期|第二学期)/)
+  if (shortTermMatch) {
+    const startYear = `20${shortTermMatch[1]}`
+    const endYear = `20${shortTermMatch[2]}`
+    const termName = shortTermMatch[3].replace('两', '二')
+    return `${startYear}-${endYear} 学年${termName}`
+  }
+
+  const date = dateValue ? new Date(dateValue) : null
+  if (!date || Number.isNaN(date.getTime())) return '未划分学期'
+  const year = date.getFullYear()
+  const month = date.getMonth() + 1
+  const startYear = month >= 9 ? year : year - 1
+  const termName = (month >= 9 || month === 1) ? '第一学期' : '第二学期'
+  return `${startYear}-${startYear + 1} 学年${termName}`
+}
 
 const deriveExamStatus = (exam) => {
   const now = Date.now()
@@ -337,13 +395,16 @@ const fetchExams = async () => {
     const res = await request.get('/teacher/exams')
     allExams.value = res.map(e => {
       const subjectName = e.subject || (e.title.includes('数学') ? '高等数学' : (e.title.includes('英语') ? '大学英语' : 'JavaWeb'))
+      const targetClasses = getTargetClasses(e.targetClasses)
       return {
         id: e.examId,
-        term: '23-24第一学期',
+        term: resolveTermByDate(e.startTime, e.title),
         subjectId: subjects.value.find(subject => subject.name === subjectName)?.id || null,
         subjectName,
         title: e.title,
-        targetClass: e.targetClasses,
+        targetClass: targetClasses.map(cls => cls.className).join('、') || e.targetClasses,
+        targetGrades: [...new Set(targetClasses.map(getClassGrade).filter(Boolean))],
+        targetClassNames: targetClasses.map(cls => cls.className),
         rawTargetClasses: e.targetClasses,
         duration: e.duration || 120,
         startTimeRaw: e.startTime,
@@ -359,8 +420,9 @@ const fetchExams = async () => {
   }
 }
 
-onMounted(() => {
-  fetchExams()
+onMounted(async () => {
+  await loadManagedSubjects()
+  await fetchExams()
 })
 
 const filteredExams = computed(() => {
@@ -369,8 +431,8 @@ const filteredExams = computed(() => {
     return e.subjectName === currentSubject.value.name &&
            (!filters.value.term || e.term === filters.value.term) &&
            (!filters.value.status || e.status === filters.value.status) &&
-           (!filters.value.grade || e.targetClass.includes(filters.value.grade)) &&
-           (!filters.value.class || e.targetClass.includes(filters.value.class))
+            (!filters.value.grade || e.targetGrades.includes(filters.value.grade)) &&
+            (!filters.value.class || e.targetClassNames.includes(filters.value.class))
   })
 })
 
@@ -395,7 +457,7 @@ const submitPublish = async () => {
     // Extract class IDs: targets is array of [grade, class] arrays -> just take class labels for now
     const targetStr = newExam.value.targets.length > 0
       ? newExam.value.targets.map(arr => arr[arr.length - 1]).join(',')
-      : '1,2'
+      : managedClasses.value.map(cls => cls.classId).join(',')
     
     const durationMs = new Date(endTime) - new Date(startTime)
     const durationMinutes = Math.round(durationMs / 60000) || 120

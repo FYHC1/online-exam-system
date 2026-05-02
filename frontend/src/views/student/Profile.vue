@@ -2,229 +2,173 @@
   <div class="profile-container">
     <div class="glass-card mb-4" style="padding: 20px;">
       <h2>个人资料</h2>
-      <p style="color: var(--text-secondary); margin-top: 8px;">在这里查看和设置您的基础学习信息与系统头像。</p>
+      <p style="color: var(--text-secondary); margin-top: 8px;">查看学生身份信息，并修改头像、联系方式和登录密码。</p>
     </div>
 
     <div class="glass-card p-4 main-content">
       <el-row :gutter="40" style="width: 100%; align-items: stretch;">
         <el-col :span="8" class="text-center">
           <div class="avatar-section">
-            <el-avatar :size="120" class="profile-avatar" :src="userInfo.avatar">
-              {{ userInfo.realName?.charAt(0) || 'U' }}
-            </el-avatar>
-            <el-upload
-              class="upload-btn"
-              action="#"
-              :auto-upload="false"
-              :show-file-list="false"
-              @change="handleAvatarChange"
-              accept="image/jpeg,image/png,image/gif"
-            >
+            <el-avatar :size="120" class="profile-avatar" :src="form.avatar">{{ form.realName?.charAt(0) || 'U' }}</el-avatar>
+            <el-upload class="upload-btn" action="#" :auto-upload="false" :show-file-list="false" @change="handleAvatarChange" accept="image/jpeg,image/png,image/gif">
               <el-button type="primary" plain round>更换头像</el-button>
             </el-upload>
-            <div class="tip">支持 JPG、PNG 格式<br/>图片大小不超过 2MB</div>
+            <div class="tip">支持 JPG、PNG 格式，图片大小不超过 2MB</div>
           </div>
         </el-col>
 
         <el-col :span="16">
-          <el-form label-width="100px" :model="userInfo" class="profile-form" label-position="left">
+          <el-form label-width="110px" :model="form" class="profile-form" label-position="left">
             <el-form-item label="姓名">
-              <el-input v-model="userInfo.realName" disabled />
+              <el-input :model-value="form.realName" disabled />
             </el-form-item>
             <el-form-item label="学号/账号">
-              <el-input v-model="userInfo.username" disabled />
+              <el-input :model-value="form.username" disabled />
             </el-form-item>
-            <el-form-item label="入学年份">
-              <el-select v-model="userInfo.grade" class="w-full">
-                <el-option label="2021级 (大四)" value="2021级" />
-                <el-option label="2022级 (大三)" value="2022级" />
-                <el-option label="2023级 (大二)" value="2023级" />
-                <el-option label="2024级 (大一)" value="2024级" />
-              </el-select>
+            <el-form-item label="所属学院">
+              <el-input :model-value="form.department" disabled />
             </el-form-item>
             <el-form-item label="所属专业">
-              <el-input v-model="userInfo.major" placeholder="例如：软件工程" />
+              <el-input :model-value="form.major" disabled />
             </el-form-item>
-            <el-form-item label="班级编号">
-              <el-input v-model="userInfo.class" placeholder="例如：2班" />
+            <el-form-item label="所在班级">
+              <el-input :model-value="form.className" disabled />
+            </el-form-item>
+            <el-form-item label="入学年份">
+              <el-input :model-value="form.enrollmentYear" disabled />
+            </el-form-item>
+            <el-form-item label="联系方式">
+              <el-input v-model="form.phone" placeholder="请输入手机号码或联系方式" />
             </el-form-item>
             <el-form-item class="action-buttons">
-              <el-button type="primary" @click="saveProfile">保存修改</el-button>
-              <el-button @click="resetProfile">重置</el-button>
+              <el-button type="primary" :loading="saving" @click="saveProfile">保存资料</el-button>
             </el-form-item>
           </el-form>
         </el-col>
       </el-row>
     </div>
 
-    <el-row :gutter="20" class="mt-4">
-      <el-col :span="8">
-        <div class="glass-card stat-panel primary-stat">
-          <div class="stat-icon"><i class="el-icon-data-line"></i></div>
-          <div class="stat-info">
-            <div class="val">18</div>
-            <div class="label">已参与考试总数</div>
-          </div>
-        </div>
-      </el-col>
-      <el-col :span="8">
-        <div class="glass-card stat-panel success-stat">
-          <div class="stat-icon"><i class="el-icon-trophy"></i></div>
-          <div class="stat-info">
-            <div class="val">86.5分</div>
-            <div class="label">历史平均得分</div>
-          </div>
-        </div>
-      </el-col>
-      <el-col :span="8">
-        <div class="glass-card stat-panel warning-stat">
-          <div class="stat-icon"><i class="el-icon-warning-outline"></i></div>
-          <div class="stat-info">
-            <div class="val">32题</div>
-            <div class="label">错题本收录量</div>
-          </div>
-        </div>
-      </el-col>
-    </el-row>
+    <div class="glass-card p-4 mt-4">
+      <h3 style="margin-top: 0;">修改密码</h3>
+      <el-form label-width="110px" :model="passwordForm" class="password-form">
+        <el-form-item label="原密码">
+          <el-input v-model="passwordForm.oldPassword" type="password" show-password />
+        </el-form-item>
+        <el-form-item label="新密码">
+          <el-input v-model="passwordForm.newPassword" type="password" show-password />
+        </el-form-item>
+        <el-form-item label="确认新密码">
+          <el-input v-model="passwordForm.confirmPassword" type="password" show-password />
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" :loading="changingPassword" @click="changePassword">确认修改</el-button>
+        </el-form-item>
+      </el-form>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { reactive, ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import request from '@/utils/request'
 
-const userInfo = ref({
-  username: 'student',
-  realName: '张三',
-  grade: '2021级',
-  major: '软件工程',
-  class: '2班',
-  avatar: ''
-})
+const form = reactive({ username: '', realName: '', department: '', major: '', className: '', enrollmentYear: '', phone: '', avatar: '' })
+const passwordForm = reactive({ oldPassword: '', newPassword: '', confirmPassword: '' })
+const saving = ref(false)
+const changingPassword = ref(false)
 
-const parseDataFromLocal = () => {
+const syncLocalUser = () => {
   const localUser = JSON.parse(localStorage.getItem('userInfo') || '{}')
-  if(localUser.username) {
-    userInfo.value.username = localUser.username || 'student'
-    userInfo.value.realName = localUser.realName || '张三'
-    userInfo.value.grade = localUser.grade || '2021级'
-    userInfo.value.avatar = localUser.avatar || ''
-    
-    if (localUser.majorClass) {
-      if (localUser.majorClass.includes('|')) {
-         const parts = localUser.majorClass.split('|')
-         userInfo.value.major = parts[0].trim()
-         userInfo.value.class = parts[1].trim()
-      } else {
-         const match = localUser.majorClass.match(/(\d+班)/)
-         if (match) {
-            userInfo.value.major = localUser.majorClass.replace(match[0], '').trim()
-            userInfo.value.class = match[0]
-         } else {
-            userInfo.value.major = localUser.majorClass
-            userInfo.value.class = ''
-         }
-      }
-    }
+  localUser.realName = form.realName
+  localUser.avatar = form.avatar
+  localUser.department = form.department
+  localUser.majorClass = [form.major, form.className].filter(Boolean).join(' | ')
+  localUser.grade = form.grade
+  localStorage.setItem('userInfo', JSON.stringify(localUser))
+}
+
+const loadProfile = async () => {
+  const data = await request.get('/profile/me')
+  Object.assign(form, data)
+}
+
+onMounted(async () => {
+  try {
+    await loadProfile()
+  } catch {
+    ElMessage.error('加载个人资料失败')
   }
-}
-
-onMounted(() => {
-  parseDataFromLocal()
 })
-
-const resetProfile = () => {
-  parseDataFromLocal()
-  ElMessage.info('已恢复为当前保存的数据')
-}
 
 const handleAvatarChange = (file) => {
   if (file.size > 2 * 1024 * 1024) {
-    ElMessage.error('图片过大，请保持在 2MB 以内！')
+    ElMessage.error('图片过大，请保持在 2MB 以内')
     return
   }
-  userInfo.value.avatar = URL.createObjectURL(file.raw)
-  ElMessage.success('头像预览成功，点击"保存修改"后永久生效！')
+  const reader = new FileReader()
+  reader.onload = () => {
+    form.avatar = reader.result
+    ElMessage.success('头像已更新预览，保存后生效')
+  }
+  reader.readAsDataURL(file.raw)
 }
 
-const saveProfile = () => {
-  const localUser = JSON.parse(localStorage.getItem('userInfo') || '{}')
-  localUser.grade = userInfo.value.grade
-  localUser.majorClass = userInfo.value.class ? `${userInfo.value.major} | ${userInfo.value.class}` : userInfo.value.major
-  localUser.realName = userInfo.value.realName
-  localUser.avatar = userInfo.value.avatar
-  
-  localStorage.setItem('userInfo', JSON.stringify(localUser))
-  
-  ElMessage.success('个人资料已成功保存！请刷新页面以同步导航栏头像。')
+const saveProfile = async () => {
+  const phone = String(form.phone || '').trim()
+  if (phone && !/^\d{11}$/.test(phone)) {
+    ElMessage.error('联系方式需为11位纯数字手机号')
+    return
+  }
+  form.phone = phone
+  saving.value = true
+  try {
+    const data = await request.put('/profile/me', { phone: form.phone, avatar: form.avatar })
+    Object.assign(form, data)
+    syncLocalUser()
+    ElMessage.success('个人资料已保存')
+  } catch {
+    ElMessage.error('保存资料失败')
+  } finally {
+    saving.value = false
+  }
+}
+
+const changePassword = async () => {
+  if (!passwordForm.oldPassword || !passwordForm.newPassword || !passwordForm.confirmPassword) {
+    ElMessage.error('请完整填写密码信息')
+    return
+  }
+  if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+    ElMessage.error('两次输入的新密码不一致')
+    return
+  }
+  changingPassword.value = true
+  try {
+    await request.put('/profile/password', { oldPassword: passwordForm.oldPassword, newPassword: passwordForm.newPassword })
+    passwordForm.oldPassword = ''
+    passwordForm.newPassword = ''
+    passwordForm.confirmPassword = ''
+    ElMessage.success('密码修改成功，请牢记新密码')
+  } catch (e) {
+    ElMessage.error(e?.message || '密码修改失败')
+  } finally {
+    changingPassword.value = false
+  }
 }
 </script>
 
 <style scoped>
 .mb-4 { margin-bottom: 20px; }
-.p-4 { padding: 40px; }
-.w-full { width: 100%; }
-.main-content { min-height: 400px; display: flex; align-items: stretch; }
-
-.avatar-section {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding-right: 40px;
-  border-right: 1px dashed var(--glass-border);
-  height: 100%;
-}
-
-.profile-avatar {
-  background: var(--primary-color);
-  font-size: 40px;
-  color: white;
-  margin-bottom: 24px;
-  box-shadow: 0 8px 16px rgba(0,0,0,0.1);
-  border: 4px solid rgba(255,255,255,0.5);
-  transition: all 0.3s ease;
-}
-
-.profile-avatar:hover {
-  transform: scale(1.05);
-  box-shadow: 0 12px 24px rgba(0,0,0,0.15);
-}
-
-.upload-btn { margin-bottom: 12px; }
-.tip { font-size: 13px; color: var(--text-secondary); text-align: center; line-height: 1.6; }
-
-.profile-form { max-width: 450px; padding-left: 40px; padding-top: 10px; }
-:deep(.el-input__wrapper), :deep(.el-select__wrapper) {
-  background-color: rgba(255, 255, 255, 0.4) !important;
-  box-shadow: none !important;
-  border: 1px solid var(--glass-border);
-}
-
-:deep(.el-input.is-disabled .el-input__wrapper) {
-  background-color: rgba(0, 0, 0, 0.05) !important;
-  color: var(--text-secondary);
-}
-
-.action-buttons { margin-top: 30px; }
-
 .mt-4 { margin-top: 20px; }
-
-.stat-panel {
-  padding: 24px;
-  display: flex;
-  align-items: center;
-  gap: 20px;
-}
-.stat-icon {
-  width: 60px; height: 60px; border-radius: 12px;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 32px;
-}
-.stat-info .val { font-size: 28px; font-weight: bold; color: var(--text-primary); margin-bottom: 4px; }
-.stat-info .label { font-size: 14px; color: var(--text-secondary); }
-
-.primary-stat .stat-icon { background: rgba(56, 189, 248, 0.1); color: #38bdf8; }
-.success-stat .stat-icon { background: rgba(16, 185, 129, 0.1); color: #10b981; }
-.warning-stat .stat-icon { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
+.p-4 { padding: 40px; }
+.main-content { min-height: 360px; display: flex; align-items: stretch; }
+.avatar-section { display:flex; flex-direction:column; align-items:center; justify-content:center; padding-right:40px; border-right:1px dashed var(--glass-border); height:100%; }
+.profile-avatar { background:var(--primary-color); font-size:40px; color:#fff; margin-bottom:24px; box-shadow:0 8px 16px rgba(0,0,0,.1); border:4px solid rgba(255,255,255,.5); }
+.upload-btn { margin-bottom: 12px; }
+.tip { font-size:13px; color:var(--text-secondary); text-align:center; line-height:1.6; }
+.profile-form, .password-form { max-width: 520px; }
+:deep(.el-input__wrapper) { background-color: rgba(255,255,255,.4) !important; box-shadow:none !important; border:1px solid var(--glass-border); }
+:deep(.el-input.is-disabled .el-input__wrapper) { background-color: rgba(0,0,0,.05) !important; }
+.action-buttons { margin-top: 18px; }
 </style>

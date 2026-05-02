@@ -17,7 +17,7 @@ public interface TeacherService {
     /**
      * Question Bank Management
      */
-    List<QuestionBank> getQuestions(String subject, Integer difficulty, String type, String keyword);
+    List<QuestionBank> getQuestions(Integer teacherId, String subject, Integer difficulty, String type, String keyword);
     void addQuestion(QuestionBank question);
     void updateQuestion(QuestionBank question);
     void deleteQuestion(Integer questionId);

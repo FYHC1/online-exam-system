@@ -44,44 +44,39 @@
         <el-form-item label="学期：">
           <el-select v-model="filters.term" placeholder="全部学期">
             <el-option label="全部学期" value="" />
-            <el-option label="23-24第二学期" value="23-24第二学期" />
-            <el-option label="23-24第一学期" value="23-24第一学期" />
+            <el-option v-for="term in termOptions" :key="term" :label="term" :value="term" />
           </el-select>
         </el-form-item>
         <el-form-item label="年级：">
           <el-select v-model="filters.grade" placeholder="全部年级">
             <el-option label="全部年级" value="" />
-            <el-option label="2021级" value="2021级" />
-            <el-option label="2022级" value="2022级" />
-            <el-option label="2023级" value="2023级" />
+            <el-option v-for="grade in gradeOptions" :key="grade" :label="grade" :value="grade" />
           </el-select>
         </el-form-item>
         <el-form-item label="负责科目：">
           <el-select v-model="filters.subject" placeholder="全部科目">
             <el-option label="全部科目" value="" />
-            <el-option label="高等数学" value="高等数学" />
-            <el-option label="大学英语" value="大学英语" />
-            <el-option label="JavaWeb" value="JavaWeb" />
+            <el-option v-for="subject in subjectOptions" :key="subject" :label="subject" :value="subject" />
           </el-select>
         </el-form-item>
         <el-form-item label="负责班级：">
           <el-select v-model="filters.class" placeholder="全部班级">
             <el-option label="全部班级" value="" />
-            <el-option label="软件工程1班" value="软件工程1班" />
-            <el-option label="软件工程2班" value="软件工程2班" />
+            <el-option v-for="cls in classOptions" :key="cls.classId" :label="cls.className" :value="cls.className" />
           </el-select>
         </el-form-item>
       </el-form>
     </div>
 
-    <el-row :gutter="20">
+    <el-row :gutter="20" class="mb-4">
       <el-col :span="16">
         <div class="glass-card panel-card">
           <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--glass-border); margin-bottom: 24px; padding-bottom: 12px;">
             <h3 style="margin: 0; border: none; padding: 0;">近期考试概况</h3>
           </div>
           <el-table :data="recentExams" style="width: 100%" class="custom-table">
-            <el-table-column prop="title" label="考试名称" />
+            <el-table-column prop="title" label="考试名称" min-width="180" />
+            <el-table-column prop="class" label="负责班级" min-width="160" />
             <el-table-column prop="attendRate" label="参考率">
               <template #default="scope">
                 <el-progress :percentage="scope.row.attendRate" :color="getColors(scope.row.attendRate)" />
@@ -114,36 +109,54 @@
         </div>
       </el-col>
     </el-row>
+
+    <div class="glass-card p-4">
+      <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--glass-border); margin-bottom: 18px; padding-bottom: 12px;">
+        <h3 style="margin: 0; border: none; padding: 0;">平台公告</h3>
+      </div>
+      <ul class="announcement-list">
+        <li v-for="item in announcements" :key="item.id" @click="viewAnnouncement(item)">
+          <span class="tag" v-if="item.isTop">置顶</span>
+          <span class="title">{{ item.title }}</span>
+          <span class="date">{{ item.date }}</span>
+        </li>
+      </ul>
+      <el-empty v-if="!announcements.length" description="暂无公告" :image-size="80" />
+    </div>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { ElMessageBox } from 'element-plus'
 import request from '@/utils/request'
 
 const filters = ref({ term: '', grade: '', subject: '', class: '' })
 
-const stats = ref({ totalStudents: 128, totalExams: 0, pendingGrading: 45, totalQuestions: 0 })
+const stats = ref({ totalStudents: 0, totalExams: 0, pendingGrading: 0, totalQuestions: 0 })
 const allExams = ref([])
+const classOptions = ref([])
+const gradeOptions = ref([])
+const subjectOptions = ref([])
+const rawDistribution = ref([])
+const announcements = ref([])
+
+const termOptions = computed(() => [...new Set(allExams.value.map(item => item.term).filter(Boolean))])
 
 const fetchDashboardData = async () => {
   try {
     const dashRes = await request.get('/teacher/dashboard')
-    const examsRes = await request.get('/teacher/exams')
-    
-    stats.value.totalExams = dashRes.totalExams || examsRes.length
-    stats.value.totalQuestions = dashRes.totalQuestions || 0
-    
-    allExams.value = examsRes.map(e => ({
-      title: e.title,
-      term: '23-24第一学期', // Simplified
-      grade: '2023级',
-      subject: e.subject || '未分类',
-      class: e.targetClasses || '全校',
-      attendRate: Math.floor(Math.random() * 10) + 90, // Mock for display until real attendee logic
-      passRate: Math.floor(Math.random() * 30) + 70, 
-      avgScore: (Math.random() * 20 + 70).toFixed(1)
-    }))
+    stats.value = {
+      totalStudents: dashRes.totalStudents || 0,
+      totalExams: dashRes.totalExams || 0,
+      pendingGrading: dashRes.pendingGrading || 0,
+      totalQuestions: dashRes.totalQuestions || 0
+    }
+    classOptions.value = dashRes.classes || []
+    gradeOptions.value = dashRes.gradeOptions || []
+    subjectOptions.value = dashRes.subjectOptions || []
+    allExams.value = dashRes.recentExams || []
+    rawDistribution.value = dashRes.distribution || []
   } catch(e) {
     console.error('Failed to load dashboard', e)
   }
@@ -151,33 +164,64 @@ const fetchDashboardData = async () => {
 
 onMounted(() => {
   fetchDashboardData()
+  fetchAnnouncements()
 })
+
+const fetchAnnouncements = async () => {
+  try {
+    const res = await request.get('/announcements')
+    announcements.value = res.map(item => ({
+      id: item.id,
+      title: item.title,
+      content: item.content,
+      isTop: item.isTop === 1,
+      date: item.createTime ? new Date(item.createTime).toLocaleDateString().slice(5) : ''
+    }))
+  } catch {
+    announcements.value = []
+  }
+}
+
+const viewAnnouncement = (item) => {
+  ElMessageBox.alert(item.content || '暂无详细内容', item.title, {
+    confirmButtonText: '我知道了',
+    type: 'info'
+  })
+}
 
 const recentExams = computed(() => {
   return allExams.value.filter(e => {
     return (!filters.value.term || e.term === filters.value.term) &&
-           (!filters.value.grade || e.grade === filters.value.grade) &&
+           (!filters.value.grade || String(e.grade || '').includes(filters.value.grade)) &&
            (!filters.value.subject || e.subject === filters.value.subject) &&
-           (!filters.value.class || e.class === filters.value.class)
+           (!filters.value.class || String(e.class || '').includes(filters.value.class))
   })
 })
 
 const distribution = computed(() => {
-  const countMultiplier = recentExams.value.length || 1;
-  const total = 50 * countMultiplier;
-  const a = Math.round(total * 0.36);
-  const b = Math.round(total * 0.40);
-  const c = Math.round(total * 0.16);
-  const d = Math.round(total * 0.06);
-  const e = total - a - b - c - d;
+  if (!filters.value.term && !filters.value.grade && !filters.value.subject && !filters.value.class) {
+    return rawDistribution.value
+  }
 
-  return [
-    { range: '90-100', count: a, percent: (a/total*100).toFixed(1), color: 'var(--primary-color)' },
-    { range: '80-89', count: b, percent: (b/total*100).toFixed(1), color: 'var(--success-color)' },
-    { range: '70-79', count: c, percent: (c/total*100).toFixed(1), color: 'var(--warning-color)' },
-    { range: '60-69', count: d, percent: (d/total*100).toFixed(1), color: '#f97316' },
-    { range: '不及格', count: e, percent: (e/total*100).toFixed(1), color: 'var(--danger-color)' },
+  const counts = recentExams.value.reduce((sum, item) => {
+    const buckets = Array.isArray(item.scoreBuckets) ? item.scoreBuckets : []
+    for (let i = 0; i < sum.length; i++) {
+      sum[i] += Number(buckets[i] || 0)
+    }
+    return sum
+  }, [0, 0, 0, 0, 0])
+  const base = [
+    { range: '90-100', count: counts[0], color: 'var(--primary-color)' },
+    { range: '80-89', count: counts[1], color: 'var(--success-color)' },
+    { range: '70-79', count: counts[2], color: 'var(--warning-color)' },
+    { range: '60-69', count: counts[3], color: '#f97316' },
+    { range: '不及格', count: counts[4], color: 'var(--danger-color)' }
   ]
+  const total = counts.reduce((sum, count) => sum + count, 0)
+  return base.map(item => ({
+    ...item,
+    percent: total === 0 ? 0 : Number(((item.count / total) * 100).toFixed(1))
+  }))
 })
 
 const getColors = (rate) => {
@@ -223,4 +267,42 @@ const getColors = (rate) => {
 .bar-track { flex: 1; height: 8px; background: rgba(0,0,0,0.05); border-radius: 4px; overflow: hidden; }
 .bar-fill { height: 100%; border-radius: 4px; transition: width 1s ease-out; }
 .count-label { width: 40px; font-size: 13px; font-weight: 600; text-align: left; }
+
+.announcement-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.announcement-list li {
+  display: flex;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px dashed var(--glass-border);
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+.announcement-list li:hover {
+  transform: translateX(5px);
+  color: var(--primary-color);
+}
+.announcement-list .tag {
+  background: var(--danger-color);
+  color: white;
+  font-size: 12px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-right: 8px;
+}
+.announcement-list .title {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 14px;
+}
+.announcement-list .date {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-left: 10px;
+}
 </style>

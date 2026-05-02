@@ -101,6 +101,8 @@ public class StudentServiceImpl implements StudentService {
             Map<String, Object> map = new HashMap<>();
             map.put("record", record);
             map.put("examTitle", exam != null ? exam.getTitle() : "Unknown Exam");
+            map.put("examStartTime", exam != null ? exam.getStartTime() : null);
+            map.put("examEndTime", exam != null ? exam.getEndTime() : null);
             map.put("passScore", paper != null ? paper.getPassScore() : 60);
             res.add(map);
         }
@@ -240,6 +242,10 @@ public class StudentServiceImpl implements StudentService {
         QueryWrapper<WrongQuestionBook> wqb = new QueryWrapper<>();
         wqb.eq("student_id", studentId).orderByDesc("last_error_time");
         List<WrongQuestionBook> books = wrongQuestionBookMapper.selectList(wqb);
+
+        if (books.isEmpty()) {
+            return getWrongQuestionsFromAnswerDetails(studentId);
+        }
         
         List<Map<String, Object>> res = new ArrayList<>();
         for (WrongQuestionBook wq : books) {
@@ -251,6 +257,7 @@ public class StudentServiceImpl implements StudentService {
             map.put("questionId", wq.getQuestionId());
             map.put("questionTitle", question != null ? question.getTitle() : "题目已删除");
             map.put("questionType", question != null ? question.getType() : "未知");
+            map.put("questionSubject", question != null ? question.getSubject() : "未分类");
             map.put("questionDifficulty", question != null ? question.getDifficulty() : 3);
             map.put("questionOptions", question != null ? question.getOptions() : null);
             map.put("referenceAnswer", question != null ? question.getAnswer() : null);
@@ -260,6 +267,59 @@ public class StudentServiceImpl implements StudentService {
             res.add(map);
         }
         return res;
+    }
+
+    private List<Map<String, Object>> getWrongQuestionsFromAnswerDetails(Integer studentId) {
+        QueryWrapper<StudentExamRecord> recordWrapper = new QueryWrapper<>();
+        recordWrapper.eq("student_id", studentId);
+        List<StudentExamRecord> records = recordMapper.selectList(recordWrapper);
+
+        if (records.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        Map<Integer, StudentExamRecord> recordById = new HashMap<>();
+        List<Integer> recordIds = new ArrayList<>();
+        for (StudentExamRecord record : records) {
+            recordById.put(record.getRecordId(), record);
+            recordIds.add(record.getRecordId());
+        }
+
+        QueryWrapper<StudentAnswerDetail> detailWrapper = new QueryWrapper<>();
+        detailWrapper.in("record_id", recordIds)
+                .and(w -> w.eq("is_correct", 0).or().eq("score", 0))
+                .orderByDesc("detail_id");
+        List<StudentAnswerDetail> details = answerDetailMapper.selectList(detailWrapper);
+
+        Map<Integer, Map<String, Object>> wrongByQuestionId = new LinkedHashMap<>();
+        for (StudentAnswerDetail detail : details) {
+            Integer questionId = detail.getQuestionId();
+            Map<String, Object> existing = wrongByQuestionId.get(questionId);
+            if (existing != null) {
+                existing.put("errorCount", ((Integer) existing.get("errorCount")) + 1);
+                continue;
+            }
+
+            QuestionBank question = questionMapper.selectById(questionId);
+            StudentExamRecord record = recordById.get(detail.getRecordId());
+            ExamArrangement sourceExam = record != null && record.getExamId() != null ? examMapper.selectById(record.getExamId()) : null;
+
+            Map<String, Object> map = new HashMap<>();
+            map.put("id", detail.getDetailId());
+            map.put("questionId", questionId);
+            map.put("questionTitle", question != null ? question.getTitle() : "题目已删除");
+            map.put("questionType", question != null ? question.getType() : "未知");
+            map.put("questionSubject", question != null ? question.getSubject() : "未分类");
+            map.put("questionDifficulty", question != null ? question.getDifficulty() : 3);
+            map.put("questionOptions", question != null ? question.getOptions() : null);
+            map.put("referenceAnswer", question != null ? question.getAnswer() : null);
+            map.put("sourceExamTitle", sourceExam != null ? sourceExam.getTitle() : "历史考试");
+            map.put("errorCount", 1);
+            map.put("correctStreak", getWrongQuestionStreak(studentId, questionId));
+            wrongByQuestionId.put(questionId, map);
+        }
+
+        return new ArrayList<>(wrongByQuestionId.values());
     }
 
     @Override

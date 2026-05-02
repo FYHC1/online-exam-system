@@ -34,8 +34,7 @@
         <el-form :inline="true" :model="filters">
           <el-form-item label="学期：">
             <el-select v-model="filters.term" placeholder="全部学期" clearable style="width: 150px">
-              <el-option label="23-24第二学期" value="23-24第二学期" />
-              <el-option label="23-24第一学期" value="23-24第一学期" />
+              <el-option v-for="term in termOptions" :key="term" :label="term" :value="term" />
             </el-select>
           </el-form-item>
           <el-form-item label="批阅状态：">
@@ -46,16 +45,12 @@
           </el-form-item>
           <el-form-item label="年级：">
             <el-select v-model="filters.grade" placeholder="全部年级" clearable style="width: 150px">
-              <el-option label="2021级" value="2021级" />
-              <el-option label="2022级" value="2022级" />
-              <el-option label="2023级" value="2023级" />
+              <el-option v-for="grade in gradeOptions" :key="grade" :label="grade" :value="grade" />
             </el-select>
           </el-form-item>
           <el-form-item label="班级：">
             <el-select v-model="filters.class" placeholder="全部班级" clearable style="width: 150px">
-              <el-option label="1班" value="1班" />
-              <el-option label="2班" value="2班" />
-              <el-option label="软件1班" value="软件1班" />
+              <el-option v-for="className in classOptions" :key="className" :label="className" :value="className" />
             </el-select>
           </el-form-item>
         </el-form>
@@ -140,7 +135,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import request from '@/utils/request'
 
@@ -153,13 +148,62 @@ const subjectiveAnswers = ref([])
 const currentScores = ref({})
 const originalScores = ref({})
 
-const subjects = ref([
-  { id: 1, name: '高等数学', paperCount: 5, icon: 'el-icon-odometer', color: 'rgba(56, 189, 248, 0.2)' },
-  { id: 2, name: '大学英语', paperCount: 2, icon: 'el-icon-chat-line-round', color: 'rgba(250, 204, 21, 0.2)' },
-  { id: 3, name: 'JavaWeb', paperCount: 0, icon: 'el-icon-monitor', color: 'rgba(16, 185, 129, 0.2)' }
-])
+const subjectPalette = [
+  { icon: 'el-icon-odometer', color: 'rgba(56, 189, 248, 0.2)' },
+  { icon: 'el-icon-chat-line-round', color: 'rgba(250, 204, 21, 0.2)' },
+  { icon: 'el-icon-monitor', color: 'rgba(16, 185, 129, 0.2)' },
+  { icon: 'el-icon-connection', color: 'rgba(168, 85, 247, 0.2)' }
+]
+const subjects = ref([])
+const managedClasses = ref([])
 
 const allPapers = ref([])
+
+const getClassGrade = (cls) => cls?.grade || (cls?.createTime ? `${new Date(cls.createTime).getFullYear()}级` : '')
+const termOptions = computed(() => [...new Set(allPapers.value.map(item => item.term).filter(Boolean))])
+const gradeOptions = computed(() => [...new Set(managedClasses.value.map(getClassGrade).filter(Boolean))])
+const classOptions = computed(() => [...new Set(managedClasses.value.map(item => item.className).filter(Boolean))])
+
+const getStudentGrade = (className) => {
+  const cls = managedClasses.value.find(item => item.className === className)
+  return getClassGrade(cls)
+}
+
+const resolveTermByDate = (dateValue, title) => {
+  const titleText = String(title || '')
+  const titleTermMatch = titleText.match(/(20\d{2})-(20\d{2})\s*(?:学年)?\s*(第[一二两]学期|第一学期|第二学期)/)
+  if (titleTermMatch) {
+    const termName = titleTermMatch[3].replace('两', '二')
+    return `${titleTermMatch[1]}-${titleTermMatch[2]} 学年${termName}`
+  }
+
+  const shortTermMatch = titleText.match(/(\d{2})-(\d{2})\s*(?:学年)?\s*(第[一二两]学期|第一学期|第二学期)/)
+  if (shortTermMatch) {
+    const startYear = `20${shortTermMatch[1]}`
+    const endYear = `20${shortTermMatch[2]}`
+    const termName = shortTermMatch[3].replace('两', '二')
+    return `${startYear}-${endYear} 学年${termName}`
+  }
+
+  const date = dateValue ? new Date(dateValue) : null
+  if (!date || Number.isNaN(date.getTime())) return '未划分学期'
+  const year = date.getFullYear()
+  const month = date.getMonth() + 1
+  const startYear = month >= 9 ? year : year - 1
+  const termName = (month >= 9 || month === 1) ? '第一学期' : '第二学期'
+  return `${startYear}-${startYear + 1} 学年${termName}`
+}
+
+const loadManagedSubjects = async () => {
+  const profile = await request.get('/profile/me')
+  managedClasses.value = profile.managedClasses || []
+  subjects.value = (profile.subjects || []).map((name, index) => ({
+    id: index + 1,
+    name,
+    paperCount: 0,
+    ...subjectPalette[index % subjectPalette.length]
+  }))
+}
 
 const originalSubjectiveTotal = computed(() => Object.values(originalScores.value).reduce((sum, score) => sum + (score || 0), 0))
 const currentSubjectiveTotal = computed(() => Object.values(currentScores.value).reduce((sum, score) => sum + (score || 0), 0))
@@ -185,10 +229,11 @@ const fetchGrading = async () => {
         all.push({
           recordId: r.record.recordId,
           paperId: 'P' + String(r.record.recordId).padStart(4, '0'),
-          term: '23-24第一学期',
+          term: resolveTermByDate(exam.startTime, exam.title),
           subjectId: currentSubject.value.id,
           examName: exam.title,
           studentClass: r.studentClass, // Used real data from DB
+          studentGrade: getStudentGrade(r.studentClass),
           studentName: r.studentName, // Used real data from DB
           objectiveScore: r.record.objectiveScore || 0,
           status: r.record.status === 'finished' ? '已批阅' : (r.record.status === 'abnormal' ? '异常结束' : '待批阅'),
@@ -209,8 +254,8 @@ const filteredPapers = computed(() => {
     return p.subjectId === currentSubject.value.id &&
            (!filters.value.term || p.term === filters.value.term) &&
            (!filters.value.status || p.status === filters.value.status) &&
-           (!filters.value.grade || p.studentClass.includes(filters.value.grade)) &&
-           (!filters.value.class || p.studentClass.includes(filters.value.class))
+           (!filters.value.grade || p.studentGrade === filters.value.grade) &&
+           (!filters.value.class || p.studentClass === filters.value.class)
   })
 })
 
@@ -229,6 +274,10 @@ const enterSubjectGrading = (subj) => {
   filters.value = { term: '', status: '', grade: '', class: '' }
   fetchGrading()
 }
+
+onMounted(async () => {
+  await loadManagedSubjects()
+})
 
 const startGrading = async (row) => {
   currentRecordId.value = row.recordId

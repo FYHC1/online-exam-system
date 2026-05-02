@@ -23,7 +23,7 @@
         <div class="user-profile">
           <el-dropdown trigger="click">
             <span class="el-dropdown-link name-trigger" style="display:flex; align-items:center; cursor:pointer; outline:none;">
-              <el-avatar :size="32" style="background:var(--primary-color);color:white;margin-right:8px;">{{ user.realName?.charAt(0) || 'T' }}</el-avatar>
+              <el-avatar :size="32" :src="user.avatar" style="background:var(--primary-color);color:white;margin-right:8px;">{{ user.realName?.charAt(0) || 'T' }}</el-avatar>
               <span class="name">{{ user.realName }} 老师</span>
             </span>
             <template #dropdown>

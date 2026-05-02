@@ -132,14 +132,25 @@ import request from '@/utils/request'
 const currentSubject = ref(null)
 const filters = ref({ keyword: '', type: '', difficulty: '' })
 
-const subjects = ref([
-  { id: 1, name: '高等数学', count: 0, icon: 'el-icon-odometer', color: 'rgba(56, 189, 248, 0.2)' },
-  { id: 2, name: '大学英语', count: 0, icon: 'el-icon-chat-line-round', color: 'rgba(250, 204, 21, 0.2)' },
-  { id: 3, name: 'JavaWeb', count: 0, icon: 'el-icon-monitor', color: 'rgba(16, 185, 129, 0.2)' },
-  { id: 4, name: '数据结构', count: 0, icon: 'el-icon-connection', color: 'rgba(168, 85, 247, 0.2)' }
-])
+const subjectPalette = [
+  { icon: 'el-icon-odometer', color: 'rgba(56, 189, 248, 0.2)' },
+  { icon: 'el-icon-chat-line-round', color: 'rgba(250, 204, 21, 0.2)' },
+  { icon: 'el-icon-monitor', color: 'rgba(16, 185, 129, 0.2)' },
+  { icon: 'el-icon-connection', color: 'rgba(168, 85, 247, 0.2)' }
+]
+const subjects = ref([])
 
 const allQuestions = ref([])
+
+const loadManagedSubjects = async () => {
+  const profile = await request.get('/profile/me')
+  subjects.value = (profile.subjects || []).map((name, index) => ({
+    id: index + 1,
+    name,
+    count: 0,
+    ...subjectPalette[index % subjectPalette.length]
+  }))
+}
 
 const fetchSubjectCounts = async () => {
   try {
@@ -275,8 +286,9 @@ const submitQuestion = async () => {
   }
 }
 
-onMounted(() => {
-  fetchSubjectCounts()
+onMounted(async () => {
+  await loadManagedSubjects()
+  await fetchSubjectCounts()
 })
 </script>
 

@@ -138,9 +138,8 @@ const getTypeTag = (type) => {
 const toggleTop = async (row) => {
   try {
     const payload = { 
-      announcementId: row.id,
+      id: row.id,
       title: row.title,
-      type: row.type,
       content: row.content,
       isTop: !row.isTop ? 1 : 0 
     }

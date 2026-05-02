@@ -66,6 +66,21 @@
                 <el-option v-for="department in allDepartmentOptions" :key="department" :label="department" :value="department" />
               </el-select>
             </el-form-item>
+            <el-form-item label="专业：">
+              <el-select v-model="filters.major" placeholder="全部专业" clearable style="width: 140px">
+                <el-option v-for="major in allMajorOptions" :key="major" :label="major" :value="major" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="班级：">
+              <el-select v-model="filters.class" placeholder="全部班级" clearable style="width: 140px">
+                <el-option v-for="className in classLabelOptions" :key="className" :label="className" :value="className" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="学科：">
+              <el-select v-model="filters.subject" placeholder="全部学科" clearable style="width: 140px">
+                <el-option v-for="subject in subjectOptions" :key="subject" :label="subject" :value="subject" />
+              </el-select>
+            </el-form-item>
           </template>
 
           <el-form-item label="状态：">
@@ -93,7 +108,9 @@
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column prop="className" label="所属班级/院系" show-overflow-tooltip />
+          <el-table-column prop="department" label="所属学院" show-overflow-tooltip />
+          <el-table-column prop="className" :label="currentRole.id === 'teacher' ? '关联班级' : '所属班级'" show-overflow-tooltip />
+          <el-table-column v-if="currentRole.id === 'teacher'" prop="subjectsText" label="关联学科" show-overflow-tooltip />
           <el-table-column prop="status" label="账号状态" width="120">
             <template #default="scope">
               <el-switch :model-value="scope.row.status === 1" active-color="#10b981" inactive-color="#ef4444" @change="toggleStatus(scope.row)" />
@@ -102,6 +119,7 @@
           <el-table-column label="操作" width="220" align="center">
             <template #default="scope">
               <el-button link type="primary" size="small" @click="handleEdit(scope.row)">修改</el-button>
+              <el-button v-if="scope.row.role === 'teacher'" link type="success" size="small" @click="openAssignmentDialog(scope.row)">负责范围</el-button>
               <el-button link type="warning" size="small" @click="handleResetPassword(scope.row)">重置密码</el-button>
               <el-button link type="danger" size="small" @click="handleDelete(scope.row)">删除</el-button>
             </template>
@@ -161,11 +179,16 @@
             学号前四位若为年份，将自动优先匹配对应年级。
           </div>
         </template>
-        <el-form-item label="所属学院" v-else-if="addForm.role === 'teacher'">
-          <el-select v-model="addForm.department" placeholder="请选择学院" clearable style="width:100%">
-            <el-option v-for="department in allDepartmentOptions" :key="department" :label="department" :value="department" />
-          </el-select>
-        </el-form-item>
+        <template v-else-if="addForm.role === 'teacher'">
+          <el-form-item label="所属学院">
+            <el-select v-model="addForm.department" placeholder="请选择学院" clearable style="width:100%">
+              <el-option v-for="department in allDepartmentOptions" :key="department" :label="department" :value="department" />
+            </el-select>
+          </el-form-item>
+          <div style="margin-top:-10px; margin-bottom: 12px; color: var(--text-secondary); font-size: 12px;">
+            教师负责班级与负责学科请在“教师负责范围”页面单独配置。
+          </div>
+        </template>
       </el-form>
       <template #footer>
         <el-button @click="addDialogVisible = false">取消</el-button>
@@ -207,11 +230,16 @@
             </el-select>
           </el-form-item>
         </template>
-        <el-form-item label="所属学院" v-else-if="editForm.role === 'teacher'">
-          <el-select v-model="editForm.department" placeholder="请选择学院" clearable style="width:100%">
-            <el-option v-for="department in allDepartmentOptions" :key="department" :label="department" :value="department" />
-          </el-select>
-        </el-form-item>
+        <template v-else-if="editForm.role === 'teacher'">
+          <el-form-item label="所属学院">
+            <el-select v-model="editForm.department" placeholder="请选择学院" clearable style="width:100%">
+              <el-option v-for="department in allDepartmentOptions" :key="department" :label="department" :value="department" />
+            </el-select>
+          </el-form-item>
+          <div style="margin-top:-10px; margin-bottom: 12px; color: var(--text-secondary); font-size: 12px;">
+            教师负责班级与负责学科请在“教师负责范围”页面单独配置。
+          </div>
+        </template>
         <el-form-item label="账号状态">
           <el-switch v-model="editForm.status" :active-value="1" :inactive-value="0" active-text="启用" inactive-text="禁用" />
         </el-form-item>
@@ -219,6 +247,74 @@
       <template #footer>
         <el-button @click="editDialogVisible = false">取消</el-button>
         <el-button type="primary" @click="submitEdit">保存修改</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="assignmentDialogVisible" title="教师负责范围" width="900px">
+      <template v-if="assignmentTeacher">
+        <div class="assignment-summary">
+          <div>
+            <strong>{{ assignmentTeacher.realName }}</strong>
+            <span>（{{ assignmentTeacher.username }}）</span>
+          </div>
+          <div>所属学院：{{ assignmentTeacher.department || '未分配' }}</div>
+        </div>
+
+        <el-form :inline="true" :model="assignmentFilters" class="assignment-filter">
+          <el-form-item label="学院">
+            <el-select v-model="assignmentFilters.department" clearable placeholder="全部学院" style="width:170px" @change="handleAssignmentDepartmentChange">
+              <el-option v-for="department in allDepartmentOptions" :key="department" :label="department" :value="department" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="专业">
+            <el-select v-model="assignmentFilters.major" clearable placeholder="全部专业" style="width:170px">
+              <el-option v-for="major in assignmentMajorOptions" :key="major" :label="major" :value="major" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="班级">
+            <el-select v-model="assignmentFilters.className" clearable placeholder="全部班级" style="width:170px">
+              <el-option v-for="className in assignmentClassNameOptions" :key="className" :label="className" :value="className" />
+            </el-select>
+          </el-form-item>
+          <el-form-item>
+            <el-button type="primary" @click="addAssignmentFilteredClasses">添加筛选结果</el-button>
+          </el-form-item>
+        </el-form>
+
+        <el-table :data="assignmentFilteredClasses" class="custom-table" height="240">
+          <el-table-column prop="department" label="学院" />
+          <el-table-column prop="major" label="专业" />
+          <el-table-column prop="className" label="班级" />
+          <el-table-column label="操作" width="100" align="center">
+            <template #default="scope">
+              <el-button link type="primary" :disabled="assignmentManagedClassIds.includes(scope.row.classId)" @click="addAssignmentClass(scope.row.classId)">
+                {{ assignmentManagedClassIds.includes(scope.row.classId) ? '已添加' : '添加' }}
+              </el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+
+        <div class="assignment-block">
+          <div class="assignment-title">已负责班级</div>
+          <div v-if="assignmentManagedClasses.length" class="assignment-tags">
+            <el-tag v-for="cls in assignmentManagedClasses" :key="cls.classId" closable type="success" @close="removeAssignmentClass(cls.classId)">
+              {{ cls.department }} / {{ cls.major }} / {{ cls.className }}
+            </el-tag>
+          </div>
+          <el-empty v-else description="尚未添加负责班级" :image-size="70" />
+        </div>
+
+        <div class="assignment-block">
+          <div class="assignment-title">负责学科</div>
+          <el-select v-model="assignmentManagedSubjects" multiple filterable allow-create default-first-option placeholder="请选择或输入负责学科" style="width:100%">
+            <el-option v-for="subject in subjectOptions" :key="subject" :label="subject" :value="subject" />
+          </el-select>
+        </div>
+      </template>
+
+      <template #footer>
+        <el-button @click="assignmentDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="savingAssignment" @click="saveTeacherAssignment">保存负责范围</el-button>
       </template>
     </el-dialog>
   </div>
@@ -230,13 +326,19 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import request from '@/utils/request'
 
 const currentRole = ref(null)
-const filters = ref({ keyword: '', status: '', grade: '', college: '', major: '', class: '' })
+const filters = ref({ keyword: '', status: '', grade: '', college: '', major: '', class: '', subject: '' })
 
 // Edit dialog state
 const editDialogVisible = ref(false)
 const addDialogVisible = ref(false)
-const editForm = ref({ userId: null, username: '', realName: '', phone: '', status: 1, role: '', classId: null, grade: '', department: '', major: '' })
-const addForm = ref({ username: '', password: '123456', realName: '', phone: '', role: '', classId: null, status: 1, grade: '', department: '', major: '' })
+const assignmentDialogVisible = ref(false)
+const editForm = ref({ userId: null, username: '', realName: '', phone: '', status: 1, role: '', classId: null, grade: '', department: '', major: '', managedClassIds: [], managedSubjects: [] })
+const addForm = ref({ username: '', password: '123456', realName: '', phone: '', role: '', classId: null, status: 1, grade: '', department: '', major: '', managedClassIds: [], managedSubjects: [] })
+const assignmentTeacher = ref(null)
+const assignmentManagedClassIds = ref([])
+const assignmentManagedSubjects = ref([])
+const savingAssignment = ref(false)
+const assignmentFilters = ref({ department: '', major: '', className: '' })
 const suppressEditCascadeReset = ref(false)
 const editFormPrefill = ref({ department: '', major: '', classId: null })
 
@@ -248,6 +350,7 @@ const roles = ref([
 
 const allUsers = ref([])
 const allClasses = ref([])
+const subjectOptions = ref([])
 const earliestGradeYear = ref(2020)
 
 const inferGradeFromUsername = (username) => {
@@ -284,6 +387,34 @@ const classOptions = computed(() => {
     (!major || item.major === major)
   )
 })
+const teacherAddMajorOptions = computed(() => {
+  const { department } = addForm.value
+  return [...new Set(allClasses.value
+    .filter(item => !department || item.department === department)
+    .map(item => item.major)
+    .filter(Boolean))]
+})
+const teacherAddClassOptions = computed(() => {
+  const { department, major } = addForm.value
+  return allClasses.value.filter(item =>
+    (!department || item.department === department) &&
+    (!major || item.major === major)
+  )
+})
+const teacherEditMajorOptions = computed(() => {
+  const { department } = editForm.value
+  return [...new Set(allClasses.value
+    .filter(item => !department || item.department === department)
+    .map(item => item.major)
+    .filter(Boolean))]
+})
+const teacherEditClassOptions = computed(() => {
+  const { department, major } = editForm.value
+  return allClasses.value.filter(item =>
+    (!department || item.department === department) &&
+    (!major || item.major === major)
+  )
+})
 const classLabelOptions = computed(() => [...new Set(allClasses.value.map(item => item.className).filter(Boolean))])
 const editDepartmentOptions = computed(() => {
   return [...new Set(allClasses.value.map(item => item.department).filter(Boolean))]
@@ -302,6 +433,25 @@ const editClassOptions = computed(() => {
     (!major || item.major === major)
   )
 })
+const assignmentMajorOptions = computed(() => [...new Set(allClasses.value
+  .filter(item => !assignmentFilters.value.department || item.department === assignmentFilters.value.department)
+  .map(item => item.major)
+  .filter(Boolean))])
+const assignmentClassNameOptions = computed(() => [...new Set(allClasses.value
+  .filter(item =>
+    (!assignmentFilters.value.department || item.department === assignmentFilters.value.department) &&
+    (!assignmentFilters.value.major || item.major === assignmentFilters.value.major)
+  )
+  .map(item => item.className)
+  .filter(Boolean))])
+const assignmentFilteredClasses = computed(() => allClasses.value.filter(item =>
+  (!assignmentFilters.value.department || item.department === assignmentFilters.value.department) &&
+  (!assignmentFilters.value.major || item.major === assignmentFilters.value.major) &&
+  (!assignmentFilters.value.className || item.className === assignmentFilters.value.className)
+))
+const assignmentManagedClasses = computed(() => assignmentManagedClassIds.value
+  .map(id => allClasses.value.find(item => item.classId === id))
+  .filter(Boolean))
 
 const syncStudentGrade = () => {
   if (addForm.value.role !== 'student') return
@@ -352,14 +502,21 @@ watch(() => addForm.value.department, () => {
 })
 
 watch(() => addForm.value.major, () => {
-  if (addForm.value.role !== 'student') return
-  addForm.value.classId = null
+  if (addForm.value.role === 'student') {
+    addForm.value.classId = null
+    return
+  }
+  if (addForm.value.role === 'teacher') {
+    return
+  }
 })
 
 watch(() => addForm.value.role, (role) => {
   addForm.value.classId = null
   addForm.value.department = ''
   addForm.value.major = ''
+  addForm.value.managedClassIds = []
+  addForm.value.managedSubjects = []
   if (role === 'student') {
     syncStudentGrade()
   } else {
@@ -392,10 +549,15 @@ watch(() => editForm.value.department, () => {
 })
 
 watch(() => editForm.value.major, () => {
-  if (editForm.value.role !== 'student') return
-  if (suppressEditCascadeReset.value) return
-  editForm.value.classId = null
-  editFormPrefill.value.classId = null
+  if (editForm.value.role === 'student') {
+    if (suppressEditCascadeReset.value) return
+    editForm.value.classId = null
+    editFormPrefill.value.classId = null
+    return
+  }
+  if (editForm.value.role === 'teacher' && !suppressEditCascadeReset.value) {
+    return
+  }
 })
 
 watch(editDepartmentOptions, (options) => {
@@ -454,6 +616,19 @@ const fetchGradeRange = async () => {
   }
 }
 
+const fetchSubjectOptions = async () => {
+  try {
+    const questions = await request.get('/admin/resources/questions')
+    subjectOptions.value = [...new Set(questions.map(item => item.subject).filter(Boolean))]
+  } catch {
+    subjectOptions.value = []
+  }
+}
+
+const getPrimaryManagedClass = (classIds = []) => {
+  return allClasses.value.find(cls => cls.classId === classIds[0]) || null
+}
+
 const fetchUsers = async () => {
   if (!currentRole.value) return;
   try {
@@ -461,24 +636,27 @@ const fetchUsers = async () => {
     const res = await request.get(`/admin/users?role=${currentRole.value.id}`)
     allUsers.value = res.map(u => {
       const classInfo = allClasses.value.find(item => item.classId === u.classId)
+      const managedClassIds = u.managedClassIds || []
+      const primaryManagedClass = getPrimaryManagedClass(managedClassIds)
       return {
         id: u.userId,
         username: u.username,
         realName: u.realName,
         phone: u.phone || '',
         role: currentRole.value.id,
-        grade: classInfo ? getGradeFromClass(classInfo) : '',
-        department: classInfo?.department || '',
-        major: classInfo?.major || '',
+        grade: currentRole.value.id === 'teacher' && primaryManagedClass ? getGradeFromClass(primaryManagedClass) : (classInfo ? getGradeFromClass(classInfo) : ''),
+        department: currentRole.value.id === 'teacher' ? (primaryManagedClass?.department || classInfo?.department || '') : (classInfo?.department || ''),
+        major: currentRole.value.id === 'teacher' ? (primaryManagedClass?.major || classInfo?.major || '') : (classInfo?.major || ''),
         classOnly: classInfo?.className || '',
-        college: classInfo?.department || '未分配',
-        className: classInfo
-          ? (currentRole.value.id === 'teacher'
-              ? classInfo.department
-              : `${getGradeFromClass(classInfo)} / ${classInfo.department} / ${classInfo.major} / ${classInfo.className}`)
-          : '未分配',
+        college: currentRole.value.id === 'teacher' ? (primaryManagedClass?.department || classInfo?.department || '未分配') : (classInfo?.department || '未分配'),
+        className: currentRole.value.id === 'teacher'
+          ? getManagedClassNames(managedClassIds)
+          : (classInfo ? `${getGradeFromClass(classInfo)} / ${classInfo.department} / ${classInfo.major} / ${classInfo.className}` : '未分配'),
+        subjectsText: (u.managedSubjects || []).join('、') || '未关联学科',
         status: u.status,
-        classId: u.classId
+        classId: u.classId,
+        managedClassIds,
+        managedSubjects: u.managedSubjects || []
       }
     })
   } catch(e) { 
@@ -494,13 +672,14 @@ const filteredUsers = computed(() => {
            (!filters.value.grade || u.grade === filters.value.grade) &&
            (!filters.value.college || u.department === filters.value.college) &&
            (!filters.value.major || u.major === filters.value.major) &&
-           (!filters.value.class || u.classOnly === filters.value.class)
+           (!filters.value.class || (currentRole.value.id === 'teacher' ? u.className.includes(filters.value.class) : u.classOnly === filters.value.class)) &&
+           (!filters.value.subject || u.subjectsText.includes(filters.value.subject))
   })
 })
 
 const enterRoleCategory = (role) => {
   currentRole.value = role
-  filters.value = { keyword: '', status: '', grade: '', college: '', major: '', class: '' }
+  filters.value = { keyword: '', status: '', grade: '', college: '', major: '', class: '', subject: '' }
   fetchUsers()
 }
 
@@ -516,6 +695,71 @@ const getRoleName = (role) => {
   return '系统管理'
 }
 
+const getManagedClassNames = (classIds = []) => {
+  const names = classIds
+    .map(id => allClasses.value.find(cls => cls.classId === id)?.className)
+    .filter(Boolean)
+  return names.length ? names.join('、') : '未关联负责班级'
+}
+
+const openAssignmentDialog = (row) => {
+  assignmentTeacher.value = row
+  assignmentManagedClassIds.value = [...(row.managedClassIds || [])]
+  assignmentManagedSubjects.value = [...(row.managedSubjects || [])]
+  assignmentFilters.value = { department: row.department || '', major: '', className: '' }
+  assignmentDialogVisible.value = true
+}
+
+const handleAssignmentDepartmentChange = () => {
+  assignmentFilters.value.major = ''
+  assignmentFilters.value.className = ''
+}
+
+const addAssignmentClass = (classId) => {
+  if (!assignmentManagedClassIds.value.includes(classId)) {
+    assignmentManagedClassIds.value.push(classId)
+  }
+}
+
+const addAssignmentFilteredClasses = () => {
+  assignmentFilteredClasses.value.forEach(item => addAssignmentClass(item.classId))
+  ElMessage.success(`已添加 ${assignmentFilteredClasses.value.length} 个筛选结果`)
+}
+
+const removeAssignmentClass = (classId) => {
+  assignmentManagedClassIds.value = assignmentManagedClassIds.value.filter(id => id !== classId)
+}
+
+const saveTeacherAssignment = async () => {
+  if (!assignmentTeacher.value) return
+  if (!assignmentManagedClassIds.value.length) {
+    ElMessage.error('请至少添加一个负责班级')
+    return
+  }
+  if (!assignmentManagedSubjects.value.length) {
+    ElMessage.error('请至少添加一个负责学科')
+    return
+  }
+
+  savingAssignment.value = true
+  try {
+    await request.put('/admin/users', {
+      userId: assignmentTeacher.value.id,
+      role: 'teacher',
+      classId: assignmentTeacher.value.classId || assignmentManagedClassIds.value[0],
+      managedClassIds: assignmentManagedClassIds.value,
+      managedSubjects: assignmentManagedSubjects.value
+    })
+    ElMessage.success('教师负责范围已保存')
+    assignmentDialogVisible.value = false
+    await fetchUsers()
+  } catch {
+    ElMessage.error('保存负责范围失败')
+  } finally {
+    savingAssignment.value = false
+  }
+}
+
 const toggleStatus = async (row) => {
   const newStatus = row.status === 1 ? 0 : 1
   try {
@@ -528,7 +772,7 @@ const toggleStatus = async (row) => {
 }
 
 const handleAddUser = () => {
-  addForm.value = { username: '', password: '123456', realName: '', phone: '', role: currentRole.value.id, classId: null, status: 1, grade: '', department: '', major: '' }
+  addForm.value = { username: '', password: '123456', realName: '', phone: '', role: currentRole.value.id, classId: null, status: 1, grade: '', department: '', major: '', managedClassIds: [], managedSubjects: [] }
   if (currentRole.value.id === 'student') {
     syncStudentGrade()
   }
@@ -555,7 +799,7 @@ const submitAddUser = async () => {
       realName: addForm.value.realName,
       phone: addForm.value.phone,
       role: addForm.value.role,
-      classId: addForm.value.role === 'student' ? addForm.value.classId : (addForm.value.role === 'teacher' ? addForm.value.classId : null),
+      classId: addForm.value.role === 'admin' ? null : addForm.value.classId,
       status: addForm.value.status
     }
     await request.post('/admin/users', payload)
@@ -585,7 +829,9 @@ const handleEdit = (row) => {
     classId: row.classId,
     grade: row.grade || '',
     department: row.department || '',
-    major: row.major || ''
+    major: row.major || '',
+    managedClassIds: row.managedClassIds || [],
+    managedSubjects: row.managedSubjects || []
   }
   setTimeout(() => {
     suppressEditCascadeReset.value = false
@@ -609,6 +855,7 @@ const submitEdit = async () => {
       realName: editForm.value.realName,
       phone: editForm.value.phone,
       status: editForm.value.status,
+      role: editForm.value.role,
       classId: editForm.value.role === 'admin' ? null : editForm.value.classId
     })
     ElMessage.success('用户信息已更新')
@@ -652,6 +899,7 @@ const handleDelete = (row) => {
 
 onMounted(async () => {
   await fetchClasses()
+  await fetchSubjectOptions()
   await fetchGradeRange()
   await fetchRoleCounts()
 })
@@ -711,4 +959,10 @@ onMounted(async () => {
   padding: 20px;
   border-top: 1px dashed var(--glass-border);
 }
+.assignment-summary { padding: 12px 14px; margin-bottom: 16px; border-radius: 10px; background: rgba(255,255,255,.35); color: var(--text-secondary); line-height: 1.8; }
+.assignment-summary strong { color: var(--text-primary); }
+.assignment-filter { margin-bottom: 8px; }
+.assignment-block { margin-top: 18px; }
+.assignment-title { font-weight: 600; margin-bottom: 10px; color: var(--text-primary); }
+.assignment-tags { display: flex; flex-wrap: wrap; gap: 10px; }
 </style>

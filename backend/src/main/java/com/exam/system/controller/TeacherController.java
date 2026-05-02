@@ -36,7 +36,7 @@ public class TeacherController {
             @RequestParam(required = false) Integer difficulty,
             @RequestParam(required = false) String type,
             @RequestParam(required = false) String keyword) {
-        return Result.success(teacherService.getQuestions(subject, difficulty, type, keyword));
+        return Result.success(teacherService.getQuestions(getCurrentUserId(), subject, difficulty, type, keyword));
     }
 
     @PostMapping("/questions")

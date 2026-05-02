@@ -1,5 +1,18 @@
 <template>
   <div class="login-container animated-bg">
+    <div class="login-hero" v-if="loginCarousels.length">
+      <el-carousel height="160px" indicator-position="outside" arrow="hover">
+        <el-carousel-item v-for="item in carouselSlides" :key="item.id">
+          <div class="hero-slide" :style="getSlideStyle(item)">
+            <div class="hero-overlay">
+              <h1>{{ item.title }}</h1>
+              <p>{{ item.subtitle }}</p>
+            </div>
+          </div>
+        </el-carousel-item>
+      </el-carousel>
+    </div>
+
     <div class="glass-container login-box">
       <div class="header">
         <h2 class="title">在线考试系统</h2>
@@ -130,6 +143,13 @@ const registerVisible = ref(false)
 const registerLoading = ref(false)
 const registerClasses = ref([])
 const registerGrades = ref([])
+const loginCarousels = ref([])
+const fallbackCarousels = [
+  { id: 'default-1', title: '在线考试系统', subtitle: '统一管理题库、考试、成绩与错题复习', imageUrl: '' },
+  { id: 'default-2', title: '诚信考试，从容作答', subtitle: '为教师和学生提供稳定、安全的线上考试体验', imageUrl: '' },
+  { id: 'default-3', title: '数据清晰，管理高效', subtitle: '管理员可统一维护组织架构、学期、公告和考试资源', imageUrl: '' }
+]
+const carouselSlides = computed(() => loginCarousels.value.length ? loginCarousels.value.slice(0, 3) : fallbackCarousels)
 
 const form = reactive({
   username: '',
@@ -202,8 +222,25 @@ const getCaptcha = async () => {
   }
 }
 
+const getLoginCarousels = async () => {
+  try {
+    const res = await request.get('/auth/login-carousels')
+    loginCarousels.value = res.length ? res : fallbackCarousels
+  } catch {
+    loginCarousels.value = fallbackCarousels
+  }
+}
+
+const getSlideStyle = (item) => {
+  if (item.imageUrl) {
+    return { backgroundImage: `linear-gradient(135deg, rgba(15,23,42,.45), rgba(79,70,229,.35)), url(${item.imageUrl})` }
+  }
+  return { background: 'linear-gradient(135deg, rgba(99,102,241,.72), rgba(14,165,233,.52), rgba(16,185,129,.45))' }
+}
+
 onMounted(() => {
   getCaptcha()
+  getLoginCarousels()
 })
 
 const showMessage = (msg) => {
@@ -292,16 +329,57 @@ const handleLogin = () => {
 .login-container {
   height: 100vh;
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  justify-content: flex-start;
   align-items: center;
+  gap: 16px;
   position: relative;
   overflow: hidden;
+  padding: 26px 24px;
+}
+
+.login-hero {
+  width: min(760px, 88vw);
+  flex: 0 0 auto;
+}
+
+.hero-slide {
+  height: 100%;
+  border-radius: 28px;
+  overflow: hidden;
+  background-size: cover;
+  background-position: center;
+  box-shadow: 0 28px 80px rgba(15, 23, 42, 0.22);
+  position: relative;
+}
+
+.hero-overlay {
+  position: absolute;
+  inset: auto 0 0 0;
+  padding: 24px 34px;
+  color: white;
+  background: linear-gradient(180deg, transparent, rgba(15,23,42,.72));
+}
+
+.hero-overlay h1 {
+  font-size: 26px;
+  line-height: 1.2;
+  margin: 0 0 12px;
+}
+
+.hero-overlay p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.7;
+  opacity: .92;
 }
 
 .login-box {
   width: 440px;
   padding: 40px;
   animation: slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  flex: 0 0 auto;
+  margin-top: 4px;
 }
 
 .header {
@@ -382,5 +460,38 @@ const handleLogin = () => {
   cursor: pointer;
   border: 1px solid var(--border-color);
   background: #fff;
+}
+
+@media (max-width: 980px) {
+  .login-container {
+    justify-content: flex-start;
+    overflow-y: auto;
+  }
+
+  .login-hero {
+    width: 100%;
+    max-width: 440px;
+  }
+
+  .login-hero :deep(.el-carousel__container) {
+    height: 140px !important;
+  }
+
+  .hero-overlay {
+    padding: 24px;
+  }
+
+  .hero-overlay h1 {
+    font-size: 20px;
+  }
+
+  .hero-overlay p {
+    font-size: 13px;
+  }
+
+  .login-box {
+    width: 100%;
+    max-width: 440px;
+  }
 }
 </style>

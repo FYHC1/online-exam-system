@@ -37,14 +37,14 @@
         <div class="glass-card stat-card danger">
           <div class="stat-icon"><i class="el-icon-data-line"></i></div>
           <div class="stat-info">
-            <div class="stat-title">日均访问量 (UV)</div>
-            <div class="stat-value">14.2k <span style="font-size:12px; font-weight:normal;">近7天平均</span></div>
+            <div class="stat-title">学生答卷总量</div>
+            <div class="stat-value">{{ stats.totalRecords }} <span style="font-size:12px; font-weight:normal;">累计提交</span></div>
           </div>
         </div>
       </el-col>
     </el-row>
 
-    <!-- 图表展示区 mock用css写的假图表 -->
+    <!-- 图表展示区 -->
     <el-row :gutter="20" class="mb-4">
       <el-col :span="12">
         <div class="glass-card p-4">
@@ -52,18 +52,18 @@
           <div class="mock-chart-container">
             <div class="mock-bar-wrap">
               <div class="mock-label">学生</div>
-              <div class="mock-bar" style="width: 85%; background: var(--primary-color);"></div>
-              <div class="mock-val">3,205</div>
+              <div class="mock-bar" :style="{ width: `${getRolePercent('学生')}%`, background: 'var(--primary-color)' }"></div>
+              <div class="mock-val">{{ getRoleCount('学生') }}</div>
             </div>
             <div class="mock-bar-wrap">
               <div class="mock-label">教师</div>
-              <div class="mock-bar" style="width: 12%; background: var(--success-color);"></div>
-              <div class="mock-val">280</div>
+              <div class="mock-bar" :style="{ width: `${getRolePercent('教师')}%`, background: 'var(--success-color)' }"></div>
+              <div class="mock-val">{{ getRoleCount('教师') }}</div>
             </div>
             <div class="mock-bar-wrap">
               <div class="mock-label">管理员</div>
-              <div class="mock-bar" style="width: 3%; background: var(--warning-color);"></div>
-              <div class="mock-val">17</div>
+              <div class="mock-bar" :style="{ width: `${getRolePercent('管理员')}%`, background: 'var(--warning-color)' }"></div>
+              <div class="mock-val">{{ getRoleCount('管理员') }}</div>
             </div>
           </div>
         </div>
@@ -129,7 +129,7 @@
 import { ref, onMounted } from 'vue'
 import request from '@/utils/request'
 
-const stats = ref({ totalUsers: 3502, activeExams: 8, totalQuestions: 124592 })
+const stats = ref({ totalUsers: 0, activeExams: 0, totalQuestions: 0, totalRecords: 0, roleDistribution: [] })
 
 const fetchDashboardData = async () => {
   try {
@@ -137,10 +137,16 @@ const fetchDashboardData = async () => {
     stats.value.totalUsers = res.totalUsers || 0
     stats.value.activeExams = res.activeExams || 0
     stats.value.totalQuestions = res.totalQuestions || 0
+    stats.value.totalRecords = res.totalRecords || 0
+    stats.value.roleDistribution = res.roleDistribution || []
   } catch(e) {
     console.error('Failed to fetch dashboard data', e)
   }
 }
+
+const getRoleItem = (role) => stats.value.roleDistribution.find(item => item.role === role) || { count: 0, percent: 0 }
+const getRoleCount = (role) => getRoleItem(role).count
+const getRolePercent = (role) => Math.max(Number(getRoleItem(role).percent) || 0, getRoleCount(role) > 0 ? 3 : 0)
 
 onMounted(() => {
   fetchDashboardData()
