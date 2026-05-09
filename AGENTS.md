@@ -23,6 +23,13 @@ npm run dev                           # Dev server (port 3000)
 npm run build                         # Production build
 ```
 
+### 解决node_modules Rolldown native binding 混用问题
+Remove-Item -Recurse -Force node_modules
+Remove-Item -Force package-lock.json
+npm install
+npm run dev
+
+
 ### Database Setup
 1. Create MySQL database: `CREATE DATABASE online_exam`
 2. Run schema: `backend/src/main/resources/exam_system.sql`

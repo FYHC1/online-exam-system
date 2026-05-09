@@ -128,25 +128,53 @@
         </el-form-item>
         
         <div v-if="newExam.paperMode === 'auto'" style="background: rgba(var(--primary-color-rgb), 0.05); padding: 20px; border-radius: 12px; margin-bottom: 20px; border: 1px solid var(--glass-border);">
-          <h4 style="margin: 0 0 16px 0; color: var(--primary-color);">自动抽题题型及数量配置</h4>
+          <div class="auto-config-header">
+            <div>
+              <h4>自动抽题题型、数量及分值配置</h4>
+              <p>试卷总分固定为 100 分，可手动调整每类题型总分。</p>
+            </div>
+            <el-button size="small" plain type="primary" @click="autoDistributeScores">自动分配分值</el-button>
+          </div>
           <el-row :gutter="20">
-            <el-col :span="6">
+            <el-col :span="4">
               <el-input-number v-model="newExam.autoConfig.single" :min="0" :max="50" size="small" controls-position="right" style="width: 100%" />
               <div style="font-size: 12px; color: var(--text-secondary); text-align: center; margin-top: 6px;">单选 (题数)</div>
             </el-col>
-            <el-col :span="6">
+            <el-col :span="4">
               <el-input-number v-model="newExam.autoConfig.multiple" :min="0" :max="50" size="small" controls-position="right" style="width: 100%" />
               <div style="font-size: 12px; color: var(--text-secondary); text-align: center; margin-top: 6px;">多选 (题数)</div>
             </el-col>
-            <el-col :span="6">
+            <el-col :span="4">
               <el-input-number v-model="newExam.autoConfig.judge" :min="0" :max="50" size="small" controls-position="right" style="width: 100%" />
               <div style="font-size: 12px; color: var(--text-secondary); text-align: center; margin-top: 6px;">判断 (题数)</div>
             </el-col>
-            <el-col :span="6">
+            <el-col :span="4">
+              <el-input-number v-model="newExam.autoConfig.fill" :min="0" :max="50" size="small" controls-position="right" style="width: 100%" />
+              <div style="font-size: 12px; color: var(--text-secondary); text-align: center; margin-top: 6px;">填空 (题数)</div>
+            </el-col>
+            <el-col :span="4">
               <el-input-number v-model="newExam.autoConfig.subjective" :min="0" :max="50" size="small" controls-position="right" style="width: 100%" />
               <div style="font-size: 12px; color: var(--text-secondary); text-align: center; margin-top: 6px;">简答 (题数)</div>
             </el-col>
           </el-row>
+          <el-row :gutter="20" style="margin-top: 16px;">
+            <el-col :span="4" v-for="item in autoConfigMap" :key="item.scoreKey">
+              <el-input-number
+                v-model="newExam.scoreConfig[item.key]"
+                :min="newExam.autoConfig[item.key] > 0 ? newExam.autoConfig[item.key] : 0"
+                :max="100"
+                size="small"
+                controls-position="right"
+                style="width: 100%"
+              />
+              <div style="font-size: 12px; color: var(--text-secondary); text-align: center; margin-top: 6px;">{{ item.shortLabel }} (总分)</div>
+            </el-col>
+          </el-row>
+          <div class="score-summary" :class="{ invalid: autoScoreTotal !== 100 }">
+            <span>当前总分：{{ autoScoreTotal }} / 100</span>
+            <span v-if="autoScoreTotal !== 100">请调整各题型总分，使试卷总分等于 100 分。</span>
+            <span v-else>每类题型总分会自动均分到该类题目，余数分配给前几题。</span>
+          </div>
           <div v-if="!editingExamId" style="margin-top: 16px; display: flex; flex-wrap: wrap; gap: 10px;">
             <el-tag
               v-for="item in autoConfigStatus"
@@ -179,7 +207,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import request from '@/utils/request'
 
@@ -191,13 +219,16 @@ const filters = ref({ term: '', status: '', grade: '', class: '' })
 
 const publishDialogVisible = ref(false)
 const editingExamId = ref(null)
+const defaultAutoConfig = () => ({ single: 5, multiple: 2, judge: 3, fill: 2, subjective: 1 })
+const defaultScoreConfig = () => ({ single: 25, multiple: 20, judge: 15, fill: 20, subjective: 20 })
 const newExam = ref({
   title: '',
   targets: [],
   timerange: [],
   difficulty: '',
   paperMode: 'auto',
-  autoConfig: { single: 5, multiple: 2, judge: 3, subjective: 1 }
+  autoConfig: defaultAutoConfig(),
+  scoreConfig: defaultScoreConfig()
 })
 
 const resetExamForm = () => {
@@ -208,7 +239,8 @@ const resetExamForm = () => {
     timerange: [],
     difficulty: '',
     paperMode: 'auto',
-    autoConfig: { single: 5, multiple: 2, judge: 3, subjective: 1 }
+    autoConfig: defaultAutoConfig(),
+    scoreConfig: defaultScoreConfig()
   }
 }
 
@@ -221,14 +253,16 @@ const questionAvailability = ref({
   单选题: 0,
   多选题: 0,
   判断题: 0,
+  填空题: 0,
   简答题: 0
 })
 
 const autoConfigMap = [
-  { key: 'single', label: '单选题' },
-  { key: 'multiple', label: '多选题' },
-  { key: 'judge', label: '判断题' },
-  { key: 'subjective', label: '简答题' }
+  { key: 'single', scoreKey: 'single', label: '单选题', shortLabel: '单选', weight: 5 },
+  { key: 'multiple', scoreKey: 'multiple', label: '多选题', shortLabel: '多选', weight: 8 },
+  { key: 'judge', scoreKey: 'judge', label: '判断题', shortLabel: '判断', weight: 4 },
+  { key: 'fill', scoreKey: 'fill', label: '填空题', shortLabel: '填空', weight: 6 },
+  { key: 'subjective', scoreKey: 'subjective', label: '简答题', shortLabel: '简答', weight: 10 }
 ]
 
 const autoConfigStatus = computed(() => autoConfigMap.map(item => {
@@ -243,6 +277,42 @@ const autoConfigStatus = computed(() => autoConfigMap.map(item => {
 }))
 
 const autoConfigValid = computed(() => autoConfigStatus.value.every(item => item.sufficient))
+const autoScoreTotal = computed(() => autoConfigMap.reduce((sum, item) => sum + Number(newExam.value.scoreConfig[item.scoreKey] || 0), 0))
+const autoQuestionTotal = computed(() => autoConfigMap.reduce((sum, item) => sum + Number(newExam.value.autoConfig[item.key] || 0), 0))
+
+const autoDistributeScores = () => {
+  const activeItems = autoConfigMap.filter(item => Number(newExam.value.autoConfig[item.key] || 0) > 0)
+  const nextScores = defaultScoreConfig()
+  Object.keys(nextScores).forEach(key => { nextScores[key] = 0 })
+  if (!activeItems.length) {
+    newExam.value.scoreConfig = nextScores
+    return
+  }
+
+  const minimumTotal = activeItems.reduce((sum, item) => sum + Number(newExam.value.autoConfig[item.key] || 0), 0)
+  const remainingScore = Math.max(0, 100 - minimumTotal)
+  const weightedTotal = activeItems.reduce((sum, item) => sum + Number(newExam.value.autoConfig[item.key] || 0) * item.weight, 0)
+  let allocatedExtra = 0
+  activeItems.forEach((item, index) => {
+    const count = Number(newExam.value.autoConfig[item.key] || 0)
+    const extra = index === activeItems.length - 1
+      ? remainingScore - allocatedExtra
+      : Math.round((count * item.weight * remainingScore) / weightedTotal)
+    nextScores[item.scoreKey] = count + extra
+    allocatedExtra += extra
+  })
+
+  const diff = 100 - Object.values(nextScores).reduce((sum, value) => sum + value, 0)
+  if (diff !== 0) {
+    const target = [...activeItems].reverse().find(item => nextScores[item.scoreKey] + diff >= Number(newExam.value.autoConfig[item.key] || 0)) || activeItems[activeItems.length - 1]
+    nextScores[target.scoreKey] += diff
+  }
+  newExam.value.scoreConfig = nextScores
+}
+
+watch(() => ({ ...newExam.value.autoConfig }), () => {
+  autoDistributeScores()
+}, { deep: true })
 
 const loadQuestionAvailability = async () => {
   if (!currentSubject.value) return
@@ -250,7 +320,7 @@ const loadQuestionAvailability = async () => {
     const res = await request.get('/teacher/questions', {
       params: { subject: currentSubject.value.name }
     })
-    const counts = { 单选题: 0, 多选题: 0, 判断题: 0, 简答题: 0 }
+    const counts = { 单选题: 0, 多选题: 0, 判断题: 0, 填空题: 0, 简答题: 0 }
     res.forEach(question => {
       if (counts[question.type] !== undefined) {
         counts[question.type] += 1
@@ -482,6 +552,20 @@ const submitPublish = async () => {
       ElMessage.error('当前题库数量不足，无法按所选配置完成智能组卷')
       return
     }
+    if (newExam.value.paperMode === 'auto') {
+      if (autoQuestionTotal.value <= 0) {
+        ElMessage.error('请至少配置 1 道试题')
+        return
+      }
+      if (autoQuestionTotal.value > 100) {
+        ElMessage.error('自动组卷总题数不能超过 100，否则无法保证每题至少 1 分')
+        return
+      }
+      if (autoScoreTotal.value !== 100) {
+        ElMessage.error('自动组卷各题型总分之和必须等于 100 分')
+        return
+      }
+    }
      
     const payload = {
       title: newExam.value.title,
@@ -490,6 +574,7 @@ const submitPublish = async () => {
       duration: durationMinutes,
       paperMode: newExam.value.paperMode,
       autoConfig: newExam.value.paperMode === 'auto' ? newExam.value.autoConfig : null,
+      scoreConfig: newExam.value.paperMode === 'auto' ? newExam.value.scoreConfig : null,
       startTime: startTime,
       endTime: endTime
     }
@@ -532,7 +617,8 @@ const handleEdit = (row) => {
     timerange: [new Date(row.startTimeRaw), new Date(row.endTimeRaw)],
     difficulty: '',
     paperMode: 'auto',
-    autoConfig: { single: 5, multiple: 2, judge: 3, subjective: 1 }
+    autoConfig: defaultAutoConfig(),
+    scoreConfig: defaultScoreConfig()
   }
   publishDialogVisible.value = true
 }

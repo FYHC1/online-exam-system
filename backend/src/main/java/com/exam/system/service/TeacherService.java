@@ -25,7 +25,7 @@ public interface TeacherService {
     /**
      * Auto Generate Paper and Arrange Exam
      */
-    void publishExam(String title, String subject, String targetClasses, Integer duration, Integer createBy, Map<String, Integer> autoConfig, String paperMode, List<Map<String, Object>> manualQuestions, String startTime, String endTime);
+    void publishExam(String title, String subject, String targetClasses, Integer duration, Integer createBy, Map<String, Integer> autoConfig, Map<String, Integer> scoreConfig, String paperMode, List<Map<String, Object>> manualQuestions, String startTime, String endTime);
 
     /**
      * Exam Management

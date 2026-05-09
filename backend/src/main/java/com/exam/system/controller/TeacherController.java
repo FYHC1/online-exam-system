@@ -82,6 +82,7 @@ public class TeacherController {
         String targetClasses = (String) payload.get("targetClasses");
         Integer duration = Integer.parseInt(payload.get("duration").toString());
         Map<String, Integer> autoConfig = (Map<String, Integer>) payload.get("autoConfig");
+        Map<String, Integer> scoreConfig = (Map<String, Integer>) payload.get("scoreConfig");
         
         String paperMode = (String) payload.getOrDefault("paperMode", "auto");
         List<Map<String, Object>> manualQuestions = (List<Map<String, Object>>) payload.get("manualQuestions");
@@ -90,7 +91,7 @@ public class TeacherController {
         String startTimeStr = payload.get("startTime") != null ? payload.get("startTime").toString() : null;
         String endTimeStr = payload.get("endTime") != null ? payload.get("endTime").toString() : null;
         
-        teacherService.publishExam(title, subject, targetClasses, duration, getCurrentUserId(), autoConfig, paperMode, manualQuestions, startTimeStr, endTimeStr);
+        teacherService.publishExam(title, subject, targetClasses, duration, getCurrentUserId(), autoConfig, scoreConfig, paperMode, manualQuestions, startTimeStr, endTimeStr);
         return Result.success("发布成功");
     }
 

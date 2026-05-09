@@ -158,6 +158,7 @@ const subjects = ref([])
 const managedClasses = ref([])
 
 const allPapers = ref([])
+const gradingLoading = ref(false)
 
 const getClassGrade = (cls) => cls?.grade || (cls?.createTime ? `${new Date(cls.createTime).getFullYear()}级` : '')
 const termOptions = computed(() => [...new Set(allPapers.value.map(item => item.term).filter(Boolean))])
@@ -208,6 +209,12 @@ const loadManagedSubjects = async () => {
 const originalSubjectiveTotal = computed(() => Object.values(originalScores.value).reduce((sum, score) => sum + (score || 0), 0))
 const currentSubjectiveTotal = computed(() => Object.values(currentScores.value).reduce((sum, score) => sum + (score || 0), 0))
 
+const matchSubjectExam = (exam, subject) => {
+  if (!exam || !subject) return false
+  const matchTag = subject.name.substring(0, 2)
+  return exam.subject === subject.name || String(exam.title || '').includes(matchTag)
+}
+
 const refreshSubjectCounts = () => {
   subjects.value = subjects.value.map(subject => ({
     ...subject,
@@ -215,33 +222,57 @@ const refreshSubjectCounts = () => {
   }))
 }
 
+const buildPaperRows = async (subject, exams) => {
+  const subjectExams = exams.filter(exam => matchSubjectExam(exam, subject))
+  const rows = []
+  for (let exam of subjectExams) {
+    const list = await request.get(`/teacher/grading/list?examId=${exam.examId}`)
+    for (let r of list) {
+      rows.push({
+        recordId: r.record.recordId,
+        paperId: 'P' + String(r.record.recordId).padStart(4, '0'),
+        term: resolveTermByDate(exam.startTime, exam.title),
+        subjectId: subject.id,
+        examName: exam.title,
+        studentClass: r.studentClass,
+        studentGrade: getStudentGrade(r.studentClass),
+        studentName: r.studentName,
+        objectiveScore: r.record.objectiveScore || 0,
+        status: r.record.status === 'finished' ? '已批阅' : (r.record.status === 'abnormal' ? '异常结束' : '待批阅'),
+        hasSubjective: !!r.hasSubjective
+      })
+    }
+  }
+  return rows
+}
+
+const fetchAllGrading = async () => {
+  if (!subjects.value.length) return
+  gradingLoading.value = true
+  try {
+    const exams = await request.get('/teacher/exams')
+    const rows = []
+    for (const subject of subjects.value) {
+      rows.push(...await buildPaperRows(subject, exams))
+    }
+    allPapers.value = rows
+    refreshSubjectCounts()
+  } catch (e) {
+    ElMessage.error('获取批阅列表失败')
+  } finally {
+    gradingLoading.value = false
+  }
+}
+
 const fetchGrading = async () => {
   if (!currentSubject.value) return;
   try {
     const exams = await request.get('/teacher/exams')
-    let matchTag = currentSubject.value.name.substring(0, 2)
-    const subjectExams = exams.filter(e => e.title.includes(matchTag) || e.subject === currentSubject.value.name)
-    
-    let all = []
-    for (let exam of subjectExams) {
-      const list = await request.get(`/teacher/grading/list?examId=${exam.examId}`)
-      for (let r of list) {
-        all.push({
-          recordId: r.record.recordId,
-          paperId: 'P' + String(r.record.recordId).padStart(4, '0'),
-          term: resolveTermByDate(exam.startTime, exam.title),
-          subjectId: currentSubject.value.id,
-          examName: exam.title,
-          studentClass: r.studentClass, // Used real data from DB
-          studentGrade: getStudentGrade(r.studentClass),
-          studentName: r.studentName, // Used real data from DB
-          objectiveScore: r.record.objectiveScore || 0,
-          status: r.record.status === 'finished' ? '已批阅' : (r.record.status === 'abnormal' ? '异常结束' : '待批阅'),
-          hasSubjective: !!r.hasSubjective
-        })
-      }
-    }
-    allPapers.value = all
+    const currentRows = await buildPaperRows(currentSubject.value, exams)
+    allPapers.value = [
+      ...allPapers.value.filter(item => item.subjectId !== currentSubject.value.id),
+      ...currentRows
+    ]
     refreshSubjectCounts()
   } catch(e) {
     ElMessage.error('获取批阅列表失败')
@@ -272,11 +303,14 @@ const getActionLabel = (row) => {
 const enterSubjectGrading = (subj) => {
   currentSubject.value = subj
   filters.value = { term: '', status: '', grade: '', class: '' }
-  fetchGrading()
+  if (!allPapers.value.some(item => item.subjectId === subj.id)) {
+    fetchGrading()
+  }
 }
 
 onMounted(async () => {
   await loadManagedSubjects()
+  await fetchAllGrading()
 })
 
 const startGrading = async (row) => {

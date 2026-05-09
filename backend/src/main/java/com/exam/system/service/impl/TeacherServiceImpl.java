@@ -390,13 +390,14 @@ public class TeacherServiceImpl implements TeacherService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void publishExam(String title, String subject, String targetClasses, Integer duration, Integer createBy, Map<String, Integer> autoConfig, String paperMode, List<Map<String, Object>> manualQuestions, String startTimeStr, String endTimeStr) {
+    public void publishExam(String title, String subject, String targetClasses, Integer duration, Integer createBy, Map<String, Integer> autoConfig, Map<String, Integer> scoreConfig, String paperMode, List<Map<String, Object>> manualQuestions, String startTimeStr, String endTimeStr) {
         String examTitle = withCurrentTermPrefix(title);
         if (!getTeacherSubjects(createBy).contains(subject)) {
             throw new IllegalArgumentException("只能发布本人负责学科的考试");
         }
         if (!"manual".equals(paperMode)) {
             validateAutoConfig(subject, autoConfig);
+            scoreConfig = normalizeScoreConfig(autoConfig, scoreConfig);
         }
 
         // 1. Create Paper
@@ -428,19 +429,23 @@ public class TeacherServiceImpl implements TeacherService {
             }
         } else {
             if (autoConfig != null && autoConfig.containsKey("single")) {
-                selectAndBindQuestions(paper.getPaperId(), subject, "单选题", autoConfig.get("single"), 5, sort);
+                selectAndBindQuestions(paper.getPaperId(), subject, "单选题", autoConfig.get("single"), scoreConfig.getOrDefault("single", 0), sort);
                 sort += autoConfig.get("single");
             }
             if (autoConfig != null && autoConfig.containsKey("multiple")) {
-                selectAndBindQuestions(paper.getPaperId(), subject, "多选题", autoConfig.get("multiple"), 5, sort);
+                selectAndBindQuestions(paper.getPaperId(), subject, "多选题", autoConfig.get("multiple"), scoreConfig.getOrDefault("multiple", 0), sort);
                 sort += autoConfig.get("multiple");
             }
             if (autoConfig != null && autoConfig.containsKey("judge")) {
-                selectAndBindQuestions(paper.getPaperId(), subject, "判断题", autoConfig.get("judge"), 5, sort);
+                selectAndBindQuestions(paper.getPaperId(), subject, "判断题", autoConfig.get("judge"), scoreConfig.getOrDefault("judge", 0), sort);
                 sort += autoConfig.get("judge");
             }
+            if (autoConfig != null && autoConfig.containsKey("fill")) {
+                selectAndBindQuestions(paper.getPaperId(), subject, "填空题", autoConfig.get("fill"), scoreConfig.getOrDefault("fill", 0), sort);
+                sort += autoConfig.get("fill");
+            }
             if (autoConfig != null && autoConfig.containsKey("subjective")) {
-                selectAndBindQuestions(paper.getPaperId(), subject, "简答题", autoConfig.get("subjective"), 10, sort);
+                selectAndBindQuestions(paper.getPaperId(), subject, "简答题", autoConfig.get("subjective"), scoreConfig.getOrDefault("subjective", 0), sort);
             }
         }
 
@@ -483,7 +488,71 @@ public class TeacherServiceImpl implements TeacherService {
         validateQuestionCount(subject, "单选题", autoConfig.getOrDefault("single", 0));
         validateQuestionCount(subject, "多选题", autoConfig.getOrDefault("multiple", 0));
         validateQuestionCount(subject, "判断题", autoConfig.getOrDefault("judge", 0));
+        validateQuestionCount(subject, "填空题", autoConfig.getOrDefault("fill", 0));
         validateQuestionCount(subject, "简答题", autoConfig.getOrDefault("subjective", 0));
+    }
+
+    private Map<String, Integer> normalizeScoreConfig(Map<String, Integer> autoConfig, Map<String, Integer> scoreConfig) {
+        Map<String, Integer> scores = scoreConfig == null || scoreConfig.isEmpty()
+                ? autoDistributeScoreConfig(autoConfig)
+                : new HashMap<>(scoreConfig);
+        List<String> keys = Arrays.asList("single", "multiple", "judge", "fill", "subjective");
+        int questionCount = 0;
+        int totalScore = 0;
+        for (String key : keys) {
+            int count = autoConfig.getOrDefault(key, 0) == null ? 0 : autoConfig.getOrDefault(key, 0);
+            int score = scores.getOrDefault(key, 0) == null ? 0 : scores.getOrDefault(key, 0);
+            if (count <= 0) {
+                score = 0;
+            }
+            if (score < 0) {
+                throw new IllegalArgumentException("题型总分不能为负数");
+            }
+            if (count > 0 && score < count) {
+                throw new IllegalArgumentException("题型总分不能小于该题型题数，否则无法保证每题至少1分");
+            }
+            scores.put(key, score);
+            questionCount += Math.max(count, 0);
+            totalScore += score;
+        }
+        if (questionCount <= 0) {
+            throw new IllegalArgumentException("自动组卷至少需要配置1道试题");
+        }
+        if (questionCount > 100) {
+            throw new IllegalArgumentException("自动组卷总题数不能超过100");
+        }
+        if (totalScore != 100) {
+            throw new IllegalArgumentException("自动组卷题型总分之和必须等于100分");
+        }
+        return scores;
+    }
+
+    private Map<String, Integer> autoDistributeScoreConfig(Map<String, Integer> autoConfig) {
+        List<String> keys = Arrays.asList("single", "multiple", "judge", "fill", "subjective");
+        Map<String, Integer> weights = Map.of("single", 5, "multiple", 8, "judge", 4, "fill", 6, "subjective", 10);
+        Map<String, Integer> scores = new HashMap<>();
+        int weightedTotal = 0;
+        int minimumTotal = 0;
+        List<String> activeKeys = new ArrayList<>();
+        for (String key : keys) {
+            int count = autoConfig.getOrDefault(key, 0) == null ? 0 : autoConfig.getOrDefault(key, 0);
+            scores.put(key, 0);
+            if (count > 0) {
+                activeKeys.add(key);
+                minimumTotal += count;
+                weightedTotal += count * weights.get(key);
+            }
+        }
+        int remainingScore = Math.max(0, 100 - minimumTotal);
+        int allocatedExtra = 0;
+        for (int i = 0; i < activeKeys.size(); i++) {
+            String key = activeKeys.get(i);
+            int count = autoConfig.getOrDefault(key, 0);
+            int extra = i == activeKeys.size() - 1 ? remainingScore - allocatedExtra : Math.round(count * weights.get(key) * remainingScore * 1.0f / weightedTotal);
+            scores.put(key, count + extra);
+            allocatedExtra += extra;
+        }
+        return scores;
     }
 
     private void validateQuestionCount(String subject, String type, Integer requiredCount) {
@@ -499,7 +568,7 @@ public class TeacherServiceImpl implements TeacherService {
         }
     }
     
-    private void selectAndBindQuestions(Integer paperId, String subject, String type, Integer limit, Integer scorePerQuestion, int startSort) {
+    private void selectAndBindQuestions(Integer paperId, String subject, String type, Integer limit, Integer typeTotalScore, int startSort) {
         if (limit == null || limit <= 0) {
             return;
         }
@@ -507,11 +576,14 @@ public class TeacherServiceImpl implements TeacherService {
         QueryWrapper<QuestionBank> w = new QueryWrapper<>();
         w.eq("subject", subject).eq("type", type).last("LIMIT " + limit);
         List<QuestionBank> list = questionMapper.selectList(w);
-        for (QuestionBank q : list) {
+        int baseScore = typeTotalScore / limit;
+        int remainder = typeTotalScore % limit;
+        for (int index = 0; index < list.size(); index++) {
+            QuestionBank q = list.get(index);
             PaperQuestionRel rel = new PaperQuestionRel();
             rel.setPaperId(paperId);
             rel.setQuestionId(q.getQuestionId());
-            rel.setScore(scorePerQuestion);
+            rel.setScore(baseScore + (index < remainder ? 1 : 0));
             rel.setSortOrder(startSort++);
             relMapper.insert(rel);
         }

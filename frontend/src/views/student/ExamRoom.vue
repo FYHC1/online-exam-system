@@ -77,8 +77,8 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
+import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { useRouter, useRoute, onBeforeRouteLeave } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import request from '@/utils/request'
 
@@ -89,11 +89,51 @@ const examId = route.params.examId
 const timeLeft = ref(7200) // Default 120 mins
 const examTitle = ref('加载中...')
 let timer = null
+let autosaveTimer = null
 const isFullscreen = ref(false)
+const submitted = ref(false)
 
 const currentIndex = ref(0)
 const answers = ref({})
 const questions = ref([])
+const lastSavedAt = ref('')
+
+const getUserKey = () => {
+  try {
+    const userInfo = JSON.parse(localStorage.getItem('userInfo') || '{}')
+    return userInfo.userId || userInfo.username || 'anonymous'
+  } catch {
+    return 'anonymous'
+  }
+}
+
+const draftKey = `student-exam-draft:${getUserKey()}:${examId}`
+
+const loadDraft = () => {
+  try {
+    return JSON.parse(localStorage.getItem(draftKey) || '{}')
+  } catch {
+    return {}
+  }
+}
+
+const saveDraft = () => {
+  if (submitted.value || !questions.value.length) return
+  localStorage.setItem(draftKey, JSON.stringify({
+    examId,
+    answers: answers.value,
+    currentIndex: currentIndex.value,
+    timeLeft: timeLeft.value,
+    savedAt: new Date().toISOString()
+  }))
+  lastSavedAt.value = new Date().toLocaleTimeString('zh-CN', { hour12: false })
+}
+
+const clearDraft = () => {
+  localStorage.removeItem(draftKey)
+}
+
+const shouldBlockLeave = () => !submitted.value && questions.value.length > 0
 
 const normalizeOptions = (rawOptions, questionType) => {
   if (!rawOptions) return []
@@ -136,7 +176,10 @@ const fetchPaper = async () => {
   try {
     const res = await request.get(`/student/exam/${examId}/paper`)
     examTitle.value = res.exam.title
-    timeLeft.value = (res.paper.duration || 120) * 60
+    const durationSeconds = (res.paper.duration || 120) * 60
+    const endTime = res.exam.endTime ? new Date(res.exam.endTime).getTime() : 0
+    const remainingByEndTime = endTime ? Math.max(0, Math.floor((endTime - Date.now()) / 1000)) : durationSeconds
+    timeLeft.value = Math.min(durationSeconds, remainingByEndTime)
     
     questions.value = res.questions.map(q => {
       return {
@@ -148,12 +191,30 @@ const fetchPaper = async () => {
       }
     })
     
-    // Init answer array for multiple choice
+    const draft = loadDraft()
+    const draftAnswers = draft.answers && typeof draft.answers === 'object' ? draft.answers : {}
+
+    // Init answer array for multiple choice, then restore saved draft answers.
     questions.value.forEach(q => {
       if (q.type === '多选题') {
         answers.value[q.id] = []
       }
+      if (draftAnswers[q.id] !== undefined) {
+        answers.value[q.id] = q.type === '多选题' && !Array.isArray(draftAnswers[q.id])
+          ? String(draftAnswers[q.id]).split(',').filter(Boolean)
+          : draftAnswers[q.id]
+      }
     })
+    if (Number.isInteger(draft.currentIndex) && draft.currentIndex >= 0 && draft.currentIndex < questions.value.length) {
+      currentIndex.value = draft.currentIndex
+    }
+    if (Number.isInteger(draft.timeLeft) && draft.timeLeft > 0) {
+      timeLeft.value = Math.min(timeLeft.value, draft.timeLeft)
+    }
+    if (draft.savedAt) {
+      lastSavedAt.value = new Date(draft.savedAt).toLocaleTimeString('zh-CN', { hour12: false })
+      ElMessage.success(`已恢复上次自动保存的答案（${lastSavedAt.value}）`)
+    }
     
   } catch(e) {
     ElMessage.error('无法获取试卷信息')
@@ -179,17 +240,14 @@ const blockClipboardAction = (event) => {
   ElMessage.warning('考试过程中禁止复制、粘贴和剪切操作')
 }
 
-const submitPaper = async () => {
-  ElMessageBox.confirm(
-    '交卷后将无法再次修改答案，确认要现在交卷吗？',
-    '交卷提示',
-    { confirmButtonText: '立即交卷', cancelButtonText: '继续检查', type: 'warning' }
-  ).then(async () => {
+const doSubmitPaper = async () => {
     try {
       await request.post('/student/exam/submit', {
         examId: parseInt(examId),
         answers: buildAnswerList()
       })
+      submitted.value = true
+      clearDraft()
       ElMessage.success('交卷成功，正在离开考场...')
       setTimeout(() => {
         router.push('/student/dashboard')
@@ -197,30 +255,66 @@ const submitPaper = async () => {
     } catch (e) {
       ElMessage.error('交卷失败')
     }
-  }).catch(() => {})
 }
+
+const submitPaper = async (force = false) => {
+  saveDraft()
+  if (force) {
+    await doSubmitPaper()
+    return
+  }
+  ElMessageBox.confirm(
+    '交卷后将无法再次修改答案，确认要现在交卷吗？',
+    '交卷提示',
+    { confirmButtonText: '立即交卷', cancelButtonText: '继续检查', type: 'warning' }
+  ).then(doSubmitPaper).catch(() => {})
+}
+
+const handleBeforeUnload = (event) => {
+  if (!shouldBlockLeave()) return
+  saveDraft()
+  event.preventDefault()
+  event.returnValue = '考试尚未交卷，离开页面可能影响考试。请先交卷。'
+}
+
+onBeforeRouteLeave((to, from, next) => {
+  if (!shouldBlockLeave()) {
+    next()
+    return
+  }
+  saveDraft()
+  ElMessage.warning('考试进行中不能离开考试页面，请交卷后再离开。')
+  next(false)
+})
+
+watch(answers, saveDraft, { deep: true })
+watch(currentIndex, saveDraft)
 
 onMounted(() => {
   fetchPaper()
   document.addEventListener('copy', blockClipboardAction)
   document.addEventListener('cut', blockClipboardAction)
   document.addEventListener('paste', blockClipboardAction)
+  window.addEventListener('beforeunload', handleBeforeUnload)
   timer = setInterval(() => {
     if (timeLeft.value > 0) {
       timeLeft.value--
     } else {
       clearInterval(timer)
       ElMessage.warning('考试时间到，系统已自动交卷！')
-      submitPaper()
+      submitPaper(true)
     }
   }, 1000)
+  autosaveTimer = setInterval(saveDraft, 5000)
 })
 
 onUnmounted(() => {
   if (timer) clearInterval(timer)
+  if (autosaveTimer) clearInterval(autosaveTimer)
   document.removeEventListener('copy', blockClipboardAction)
   document.removeEventListener('cut', blockClipboardAction)
   document.removeEventListener('paste', blockClipboardAction)
+  window.removeEventListener('beforeunload', handleBeforeUnload)
 })
 </script>
 
