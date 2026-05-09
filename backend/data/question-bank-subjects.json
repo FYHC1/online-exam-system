@@ -1,0 +1,26 @@
+[ {
+  "name" : "JavaWeb题库",
+  "id" : "f2a46f88-712e-4243-8bbd-2cbe5e5fb352",
+  "enabled" : true,
+  "subject" : "JavaWeb"
+}, {
+  "name" : "高等数学题库",
+  "id" : "cb5bb8ee-aed9-40d8-9fbb-1544dc219e1f",
+  "enabled" : true,
+  "subject" : "高等数学"
+}, {
+  "name" : "大学英语题库",
+  "id" : "2df1a9e1-9bff-47a4-bf7a-a1dbf0550afb",
+  "enabled" : true,
+  "subject" : "大学英语"
+}, {
+  "name" : "数据结构题库",
+  "id" : "b675bfb8-bc6a-4557-a5e8-85677574410d",
+  "enabled" : true,
+  "subject" : "数据结构"
+}, {
+  "name" : "计算机组成原理题库",
+  "id" : "ee90d58a-0796-4440-bec1-e12302ef4a50",
+  "enabled" : true,
+  "subject" : "计算机组成原理"
+} ]
