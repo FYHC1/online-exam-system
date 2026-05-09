@@ -428,24 +428,26 @@ public class TeacherServiceImpl implements TeacherService {
                 }
             }
         } else {
+            List<PaperQuestionRel> autoQuestionRels = new ArrayList<>();
             if (autoConfig != null && autoConfig.containsKey("single")) {
-                selectAndBindQuestions(paper.getPaperId(), subject, "单选题", autoConfig.get("single"), scoreConfig.getOrDefault("single", 0), sort);
-                sort += autoConfig.get("single");
+                selectRandomQuestions(autoQuestionRels, paper.getPaperId(), subject, "单选题", autoConfig.get("single"), scoreConfig.getOrDefault("single", 0));
             }
             if (autoConfig != null && autoConfig.containsKey("multiple")) {
-                selectAndBindQuestions(paper.getPaperId(), subject, "多选题", autoConfig.get("multiple"), scoreConfig.getOrDefault("multiple", 0), sort);
-                sort += autoConfig.get("multiple");
+                selectRandomQuestions(autoQuestionRels, paper.getPaperId(), subject, "多选题", autoConfig.get("multiple"), scoreConfig.getOrDefault("multiple", 0));
             }
             if (autoConfig != null && autoConfig.containsKey("judge")) {
-                selectAndBindQuestions(paper.getPaperId(), subject, "判断题", autoConfig.get("judge"), scoreConfig.getOrDefault("judge", 0), sort);
-                sort += autoConfig.get("judge");
+                selectRandomQuestions(autoQuestionRels, paper.getPaperId(), subject, "判断题", autoConfig.get("judge"), scoreConfig.getOrDefault("judge", 0));
             }
             if (autoConfig != null && autoConfig.containsKey("fill")) {
-                selectAndBindQuestions(paper.getPaperId(), subject, "填空题", autoConfig.get("fill"), scoreConfig.getOrDefault("fill", 0), sort);
-                sort += autoConfig.get("fill");
+                selectRandomQuestions(autoQuestionRels, paper.getPaperId(), subject, "填空题", autoConfig.get("fill"), scoreConfig.getOrDefault("fill", 0));
             }
             if (autoConfig != null && autoConfig.containsKey("subjective")) {
-                selectAndBindQuestions(paper.getPaperId(), subject, "简答题", autoConfig.get("subjective"), scoreConfig.getOrDefault("subjective", 0), sort);
+                selectRandomQuestions(autoQuestionRels, paper.getPaperId(), subject, "简答题", autoConfig.get("subjective"), scoreConfig.getOrDefault("subjective", 0));
+            }
+            Collections.shuffle(autoQuestionRels);
+            for (PaperQuestionRel rel : autoQuestionRels) {
+                rel.setSortOrder(sort++);
+                relMapper.insert(rel);
             }
         }
 
@@ -568,13 +570,13 @@ public class TeacherServiceImpl implements TeacherService {
         }
     }
     
-    private void selectAndBindQuestions(Integer paperId, String subject, String type, Integer limit, Integer typeTotalScore, int startSort) {
+    private void selectRandomQuestions(List<PaperQuestionRel> target, Integer paperId, String subject, String type, Integer limit, Integer typeTotalScore) {
         if (limit == null || limit <= 0) {
             return;
         }
 
         QueryWrapper<QuestionBank> w = new QueryWrapper<>();
-        w.eq("subject", subject).eq("type", type).last("LIMIT " + limit);
+        w.eq("subject", subject).eq("type", type).last("ORDER BY RAND() LIMIT " + limit);
         List<QuestionBank> list = questionMapper.selectList(w);
         int baseScore = typeTotalScore / limit;
         int remainder = typeTotalScore % limit;
@@ -584,8 +586,7 @@ public class TeacherServiceImpl implements TeacherService {
             rel.setPaperId(paperId);
             rel.setQuestionId(q.getQuestionId());
             rel.setScore(baseScore + (index < remainder ? 1 : 0));
-            rel.setSortOrder(startSort++);
-            relMapper.insert(rel);
+            target.add(rel);
         }
     }
 

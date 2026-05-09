@@ -19,7 +19,7 @@ public class AuthController {
 
     @Autowired
     private AdminService adminService;
-
+    //验证码功能
     @GetMapping("/captcha")
     public Result<Map<String, String>> getCaptcha() {
         try {
@@ -73,7 +73,7 @@ public class AuthController {
             return Result.error(e.getMessage());
         }
     }
-
+    //登录轮播图
     @GetMapping("/login-carousels")
     public Result<List<Map<String, Object>>> getLoginCarousels() {
         return Result.success(adminService.getLoginCarousels(true));

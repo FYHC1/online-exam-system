@@ -37,7 +37,6 @@
             <div class="score-row">
               <span class="final-score" :class="{ 'pass': record.score >= record.passScore }">{{ record.score }} 分</span>
               <span class="detail">及格线：{{ record.passScore }} 分 | 班级排名：{{ record.rank }}</span>
-              <el-button type="primary" link style="margin-left: auto;" @click="viewDetail(record)">查看答卷明细 <i class="el-icon-arrow-right"></i></el-button>
             </div>
           </el-card>
         </el-timeline-item>
@@ -182,9 +181,6 @@ const filteredRecords = computed(() => {
   return scoreRecords.value.filter(r => !filters.value.term || r.term === filters.value.term)
 })
 
-const viewDetail = (record) => {
-  ElMessage.success(`正在为您生成《${record.examName}》的答卷详情与错题解析报告...`)
-}
 </script>
 
 <style scoped>

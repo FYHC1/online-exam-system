@@ -77,7 +77,6 @@
             <template #default="scope">
               <!-- 进行中：监控，终止 -->
               <template v-if="scope.row.status === '进行中'">
-                <el-button link type="primary" size="small" @click="handleMonitor(scope.row)">现场监控</el-button>
                 <el-button link type="danger" size="small" @click="handleTerminate(scope.row)">终止考试</el-button>
               </template>
               <!-- 未开始：修改，取消 -->
@@ -87,7 +86,7 @@
               </template>
               <!-- 已结束：查看结果 -->
               <template v-else>
-                <el-button link type="primary" size="small" @click="exportReport(scope.row)">导出成绩报告</el-button>
+                <span class="muted-action">暂无操作</span>
               </template>
             </template>
           </el-table-column>
@@ -594,11 +593,6 @@ const submitPublish = async () => {
   }
 }
 
-// Handlers for exam lifecycle
-const handleMonitor = (row) => {
-  ElMessage.info(`正在接入考场监控大屏: ${row.title}`)
-}
-
 const handleTerminate = (row) => {
   ElMessageBox.confirm('是否立即终止该场考试？交卷通道将被强制关闭！', '高危操作', { type: 'error' }).then(async () => {
     try {
@@ -633,9 +627,6 @@ const handleCancel = (row) => {
   }).catch(() => {})
 }
 
-const exportReport = (row) => {
-  ElMessage.success('正在后台生成并下载该场考试的详细分析报告(Excel/PDF)...')
-}
 </script>
 
 <style scoped>
@@ -644,6 +635,7 @@ const exportReport = (row) => {
 .mt-4 { margin-top: 20px; }
 
 .top-bar { padding: 20px; display: flex; align-items: center; gap: 16px; }
+.muted-action { color: var(--text-secondary); font-size: 13px; }
 
 .subject-card {
   padding: 24px;
