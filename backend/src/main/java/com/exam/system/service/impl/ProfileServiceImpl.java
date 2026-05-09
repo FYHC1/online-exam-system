@@ -35,6 +35,7 @@ public class ProfileServiceImpl implements ProfileService {
 
     private static final Path PROFILE_META_FILE = Paths.get("data", "user-profile-meta.json");
     private static final Path TERM_SETTINGS_FILE = Paths.get("data", "term-settings.json");
+    private static final String LEGACY_DEFAULT_PASSWORD_HASH = "$2a$10$7Q/.0Qj7YQQ0K2i3HnZ4e.2N.L/h0U/ZzD/x6xY25a58U8KFVpPoy";
 
     @Autowired
     private SysUserMapper sysUserMapper;
@@ -283,7 +284,9 @@ public class ProfileServiceImpl implements ProfileService {
     @Override
     public void changePassword(String username, String oldPassword, String newPassword) {
         SysUser user = getUserByUsername(username);
-        if (!passwordEncoder.matches(oldPassword, user.getPassword()) && !"123456".equals(oldPassword)) {
+        boolean passwordMatched = passwordEncoder.matches(oldPassword, user.getPassword());
+        boolean legacyDefaultPasswordMatched = LEGACY_DEFAULT_PASSWORD_HASH.equals(user.getPassword()) && "123456".equals(oldPassword);
+        if (!passwordMatched && !legacyDefaultPasswordMatched) {
             throw new IllegalArgumentException("原密码不正确");
         }
         user.setPassword(passwordEncoder.encode(newPassword));

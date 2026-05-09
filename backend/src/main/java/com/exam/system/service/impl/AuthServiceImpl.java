@@ -39,6 +39,7 @@ public class AuthServiceImpl implements AuthService {
     private static final Map<String, CaptchaCacheEntry> LOCAL_CAPTCHA_CACHE = new ConcurrentHashMap<>();
     private static final Path TERM_SETTINGS_FILE = Paths.get("data", "term-settings.json");
     private static final Path ORG_STRUCTURE_FILE = Paths.get("data", "org-structure.json");
+    private static final String LEGACY_DEFAULT_PASSWORD_HASH = "$2a$10$7Q/.0Qj7YQQ0K2i3HnZ4e.2N.L/h0U/ZzD/x6xY25a58U8KFVpPoy";
 
     private static class CaptchaCacheEntry {
         private final String code;
@@ -172,8 +173,17 @@ public class AuthServiceImpl implements AuthService {
         wrapper.eq("username", username).eq("role", role);
         SysUser user = sysUserMapper.selectOne(wrapper);
         
-        if (user == null || (!passwordEncoder.matches(password, user.getPassword()) && !"123456".equals(password))) {
+        if (user == null) {
             throw new RuntimeException("用户名或密码错误");
+        }
+        boolean passwordMatched = passwordEncoder.matches(password, user.getPassword());
+        boolean legacyDefaultPasswordMatched = LEGACY_DEFAULT_PASSWORD_HASH.equals(user.getPassword()) && "123456".equals(password);
+        if (!passwordMatched && !legacyDefaultPasswordMatched) {
+            throw new RuntimeException("用户名或密码错误");
+        }
+        if (legacyDefaultPasswordMatched) {
+            user.setPassword(passwordEncoder.encode(password));
+            sysUserMapper.updateById(user);
         }
         if (user.getStatus() != null && user.getStatus() == 0) {
             throw new RuntimeException("您的账户已被禁用");

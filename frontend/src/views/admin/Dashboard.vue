@@ -102,17 +102,25 @@
 
     <!-- 异常与健康状态 -->
     <div class="glass-card p-4">
-      <h3 style="margin-top:0;">系统服务运行监控 (Health Check)</h3>
+      <div class="health-header">
+        <div>
+          <h3>系统服务运行监控 (Health Check)</h3>
+          <p>每 30 秒自动刷新一次，最后更新：{{ healthUpdatedAt || '暂无' }}</p>
+        </div>
+        <el-button type="primary" plain :loading="loading" @click="fetchDashboardData">刷新监控</el-button>
+      </div>
       <el-table :data="servers" class="custom-table mt-4" border="false">
         <el-table-column prop="node" label="服务组件名称" width="220" />
         <el-table-column prop="cpu" label="CPU使用率" width="150">
           <template #default="scope">
-            <el-progress :percentage="scope.row.cpu" :color="customColors" />
+            <el-progress v-if="typeof scope.row.cpu === 'number'" :percentage="scope.row.cpu" :color="customColors" />
+            <span v-else class="muted-text">不适用</span>
           </template>
         </el-table-column>
         <el-table-column prop="ram" label="内存占用率" width="150">
           <template #default="scope">
-            <el-progress :percentage="scope.row.ram" :color="customColors" />
+            <el-progress v-if="typeof scope.row.ram === 'number'" :percentage="scope.row.ram" :color="customColors" />
+            <span v-else class="muted-text">不适用</span>
           </template>
         </el-table-column>
         <el-table-column prop="status" label="当前状态" width="120">
@@ -120,18 +128,23 @@
             <el-tag :type="scope.row.status === '正常' ? 'success' : 'danger'">{{ scope.row.status }}</el-tag>
           </template>
         </el-table-column>
+        <el-table-column prop="detail" label="检测详情" min-width="240" show-overflow-tooltip />
       </el-table>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import request from '@/utils/request'
 
 const stats = ref({ totalUsers: 0, activeExams: 0, totalQuestions: 0, totalRecords: 0, roleDistribution: [] })
+const loading = ref(false)
+const healthUpdatedAt = ref('')
+let refreshTimer = null
 
 const fetchDashboardData = async () => {
+  loading.value = true
   try {
     const res = await request.get('/admin/dashboard')
     stats.value.totalUsers = res.totalUsers || 0
@@ -139,8 +152,12 @@ const fetchDashboardData = async () => {
     stats.value.totalQuestions = res.totalQuestions || 0
     stats.value.totalRecords = res.totalRecords || 0
     stats.value.roleDistribution = res.roleDistribution || []
+    servers.value = res.serviceHealth?.servers || []
+    healthUpdatedAt.value = res.serviceHealth?.updatedAt || new Date().toLocaleTimeString('zh-CN', { hour12: false })
   } catch(e) {
     console.error('Failed to fetch dashboard data', e)
+  } finally {
+    loading.value = false
   }
 }
 
@@ -150,6 +167,17 @@ const getRolePercent = (role) => Math.max(Number(getRoleItem(role).percent) || 0
 
 onMounted(() => {
   fetchDashboardData()
+  refreshTimer = window.setInterval(() => {
+    if (!loading.value) {
+      fetchDashboardData()
+    }
+  }, 30000)
+})
+
+onUnmounted(() => {
+  if (refreshTimer) {
+    window.clearInterval(refreshTimer)
+  }
 })
 
 const customColors = [
@@ -158,11 +186,7 @@ const customColors = [
   { color: '#ef4444', percentage: 90 },
 ]
 
-const servers = ref([
-  { node: 'Redis 分布式缓存节点', cpu: 32, ram: 45, status: '正常' },
-  { node: 'MySQL 核心数据库 (Master)', cpu: 65, ram: 82, status: '正常' },
-  { node: '消息队列与异步服务 (MQ)', cpu: 15, ram: 28, status: '正常' },
-])
+const servers = ref([])
 </script>
 
 <style scoped>
@@ -191,6 +215,11 @@ const servers = ref([
 .mock-line-chart { position: relative; height: 150px; background: rgba(0,0,0,0.02); border-radius: 8px; margin-top: 20px; border-bottom: 1px solid var(--glass-border); border-left: 1px solid var(--glass-border); }
 .line-point { position: absolute; width: 8px; height: 8px; background: var(--primary-color); border-radius: 50%; transform: translate(-50%, 50%); z-index: 2; box-shadow: 0 0 10px var(--primary-color); }
 .line-segment { position: absolute; height: 3px; background: var(--primary-color); z-index: 1; border-radius: 2px; }
+
+.health-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.health-header h3 { margin: 0; }
+.health-header p { margin-top: 8px; color: var(--text-secondary); font-size: 12px; }
+.muted-text { color: var(--text-secondary); font-size: 13px; }
 
 :deep(.el-table) { background: transparent !important; }
 :deep(.el-table tr), :deep(.el-table td), :deep(.el-table th.el-table__cell) { background: transparent !important; }

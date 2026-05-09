@@ -262,10 +262,13 @@
                   <h3>操作日志</h3>
                   <p>记录系统关键操作，便于追踪高风险变更。</p>
                 </div>
-                <el-input v-model="logKeyword" placeholder="搜索操作人或日志内容" clearable style="width: 260px" />
+                <div class="log-tools">
+                  <el-input v-model="logKeyword" placeholder="搜索操作人、日志内容或 IP" clearable style="width: 260px" @keyup.enter="loadAuditLogs" />
+                  <el-button @click="loadAuditLogs">刷新</el-button>
+                </div>
               </div>
 
-              <el-table :data="filteredAuditLogs" size="small" :border="false" stripe style="width: 100%">
+              <el-table :data="auditLogs" size="small" :border="false" stripe style="width: 100%">
                 <el-table-column prop="time" label="操作时间" width="170" />
                 <el-table-column prop="actor" label="操作人" width="160" />
                 <el-table-column prop="action" label="操作内容" show-overflow-tooltip />
@@ -423,6 +426,7 @@ const subjectForm = ref({ subject: '' })
 const subjectCategories = ref([])
 const loginCarousels = ref([])
 const carouselForm = ref({ id: '', title: '', subtitle: '', imageUrl: '', enabled: true, sort: 1 })
+const auditLogs = ref([])
 
 const orgTree = ref([
   {
@@ -849,6 +853,7 @@ onMounted(() => {
   loadSubjectCategories()
   loadLoginCarousels()
   loadTermSettings()
+  loadAuditLogs()
 })
 
 const termForm = ref({
@@ -923,18 +928,13 @@ watch(() => termForm.value.name, (name) => {
   }
 })
 
-const auditLogs = ref([
-  { time: '2023-11-28 14:32:01', actor: '管理员 admin1', action: '将当前学期切换为 2023-2024 学年第一学期', ip: '192.168.1.1', risk: true },
-  { time: '2023-11-28 14:00:15', actor: '教师 teacherL', action: '查看试卷资源详情：JavaWeb 期中考试', ip: '10.0.8.44', risk: false },
-  { time: '2023-11-28 13:59:12', actor: '管理员 admin1', action: '删除学生账户 100003', ip: '192.168.1.1', risk: true },
-  { time: '2023-11-28 13:40:00', actor: '学生 studentA', action: '登录系统成功', ip: '233.12.99.1', risk: false }
-])
-
-const filteredAuditLogs = computed(() => {
-  return auditLogs.value.filter(item =>
-    !logKeyword.value || item.actor.includes(logKeyword.value) || item.action.includes(logKeyword.value)
-  )
-})
+const loadAuditLogs = async () => {
+  try {
+    auditLogs.value = await request.get('/admin/audit-logs', { params: { keyword: logKeyword.value } })
+  } catch (e) {
+    ElMessage.error('获取操作日志失败')
+  }
+}
 </script>
 
 <style scoped>
@@ -1016,6 +1016,12 @@ const filteredAuditLogs = computed(() => {
 .section-header p {
   margin: 6px 0 0;
   color: var(--text-secondary);
+}
+
+.log-tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .tree-panel {

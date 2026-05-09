@@ -15,6 +15,8 @@ public interface AdminService {
      */
     Map<String, Object> getDashboardStats();
     Map<String, Object> getAnalyticsStats();
+    List<Map<String, Object>> getAuditLogs(String keyword);
+    void recordAuditLog(String actor, String action, String ip, boolean risk);
 
     /**
      * User Management

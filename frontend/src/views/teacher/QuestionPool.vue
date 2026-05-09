@@ -56,7 +56,15 @@
           </el-form-item>
           <el-form-item style="margin-left: auto; margin-right: 0;">
             <el-button type="success" @click="addQuestion"><i class="el-icon-plus" /> 录入新题</el-button>
-            <el-button plain type="primary"><i class="el-icon-upload2" /> Word/Excel 批量导入</el-button>
+            <el-upload
+              action="#"
+              :auto-upload="false"
+              :show-file-list="false"
+              accept=".xlsx,.xls"
+              :on-change="handleExcelImport"
+            >
+              <el-button plain type="primary" :loading="importing"><i class="el-icon-upload2" /> Excel模板批量导入</el-button>
+            </el-upload>
           </el-form-item>
         </el-form>
       </div>
@@ -104,14 +112,47 @@
         <el-form-item label="题干">
           <el-input type="textarea" :rows="3" v-model="questionForm.title" placeholder="请输入题目内容..." />
         </el-form-item>
-        <template v-if="optionTypes.includes(questionForm.type)">
-          <el-form-item v-for="(opt, idx) in questionForm.options" :key="idx" :label="`选项 ${String.fromCharCode(65+idx)}`">
-            <el-input v-model="questionForm.options[idx]" :placeholder="`选项 ${String.fromCharCode(65+idx)}`" />
+        <template v-if="choiceTypes.includes(questionForm.type)">
+          <el-form-item label="选项设置">
+            <div class="option-editor">
+              <div v-for="(opt, idx) in questionForm.options" :key="idx" class="option-row">
+                <span class="option-letter">{{ getOptionLetter(idx) }}</span>
+                <el-input v-model="questionForm.options[idx]" :placeholder="`请输入选项 ${getOptionLetter(idx)} 内容`" />
+                <el-button v-if="questionForm.options.length > 2" link type="danger" @click="removeOption(idx)">删除</el-button>
+              </div>
+              <el-button type="primary" plain size="small" @click="addOption">新增选项</el-button>
+            </div>
+          </el-form-item>
+          <el-form-item label="标准答案">
+            <el-radio-group v-if="questionForm.type === '单选题'" v-model="questionForm.answer">
+              <el-radio v-for="(_, idx) in questionForm.options" :key="idx" :value="getOptionLetter(idx)">{{ getOptionLetter(idx) }}</el-radio>
+            </el-radio-group>
+            <el-checkbox-group v-else v-model="questionForm.multiAnswer">
+              <el-checkbox v-for="(_, idx) in questionForm.options" :key="idx" :value="getOptionLetter(idx)">{{ getOptionLetter(idx) }}</el-checkbox>
+            </el-checkbox-group>
           </el-form-item>
         </template>
-        <el-form-item label="标准答案">
-          <el-input v-model="questionForm.answer" placeholder="单选填A/B/C/D，判断填'正确'或'错误'，简答填参考答案" />
-        </el-form-item>
+
+        <template v-else-if="questionForm.type === '判断题'">
+          <el-form-item label="标准答案">
+            <el-radio-group v-model="questionForm.answer">
+              <el-radio value="正确">正确</el-radio>
+              <el-radio value="错误">错误</el-radio>
+            </el-radio-group>
+          </el-form-item>
+        </template>
+
+        <template v-else-if="questionForm.type === '填空题'">
+          <el-form-item label="标准答案">
+            <el-input v-model="questionForm.answer" placeholder="请输入填空题答案；多个答案可用 / 分隔" />
+          </el-form-item>
+        </template>
+
+        <template v-else>
+          <el-form-item label="参考答案">
+            <el-input v-model="questionForm.answer" type="textarea" :rows="4" placeholder="请输入简答题参考答案或评分要点" />
+          </el-form-item>
+        </template>
         <el-form-item label="难度系数">
           <el-rate v-model="questionForm.difficulty" :max="5" />
         </el-form-item>
@@ -125,8 +166,9 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import * as XLSX from 'xlsx'
 import request from '@/utils/request'
 
 const currentSubject = ref(null)
@@ -141,6 +183,7 @@ const subjectPalette = [
 const subjects = ref([])
 
 const allQuestions = ref([])
+const importing = ref(false)
 
 const loadManagedSubjects = async () => {
   const profile = await request.get('/profile/me')
@@ -224,9 +267,218 @@ const deleteQuestion = (id) => {
 }
 
 const questionDialogVisible = ref(false)
-const questionForm = ref({ questionId: null, subject: '', type: '单选题', title: '', options: ['', '', '', ''], answer: '', difficulty: 3 })
+const createQuestionForm = (subject = '') => ({
+  questionId: null,
+  subject,
+  type: '单选题',
+  title: '',
+  options: ['', '', '', ''],
+  answer: '',
+  multiAnswer: [],
+  difficulty: 3
+})
+const questionForm = ref(createQuestionForm())
 const isEditing = ref(false)
+const hydratingQuestionForm = ref(false)
+const choiceTypes = ['单选题', '多选题']
 const optionTypes = ['单选题', '多选题', '判断题']
+
+const getOptionLetter = (index) => String.fromCharCode(65 + index)
+const optionColumns = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
+
+const cleanCell = (value) => String(value ?? '').replace(/\u00a0/g, ' ').trim()
+
+const normalizeDifficulty = (value) => {
+  const text = cleanCell(value)
+  const map = { 简单: 1, 容易: 1, 中等: 3, 一般: 3, 困难: 5, 难: 5 }
+  if (map[text]) return map[text]
+  const numeric = Number(text.replace('星', ''))
+  return Number.isFinite(numeric) && numeric >= 1 && numeric <= 5 ? numeric : 3
+}
+
+const normalizeAnswerLetters = (value) => cleanCell(value)
+  .toUpperCase()
+  .replace(/[^A-H]/g, '')
+  .split('')
+  .filter((item, index, arr) => arr.indexOf(item) === index)
+  .sort()
+
+const parseImportRows = (rows) => {
+  const parsed = []
+  const errors = []
+
+  rows.slice(1).forEach((row, index) => {
+    const rowNumber = index + 2
+    const type = cleanCell(row[0])
+    const title = cleanCell(row[1])
+    if (!type && !title) return
+
+    if (!['单选题', '多选题', '判断题', '填空题', '简答题'].includes(type)) {
+      errors.push(`第 ${rowNumber} 行：题型不支持`)
+      return
+    }
+    if (!title) {
+      errors.push(`第 ${rowNumber} 行：问题内容不能为空`)
+      return
+    }
+
+    const difficulty = normalizeDifficulty(row[2])
+    const rawOptions = row.slice(4, 12).map(cleanCell)
+    const options = rawOptions.filter(Boolean)
+    let answer = cleanCell(row[3])
+    let payloadOptions = null
+
+    if (type === '单选题' || type === '多选题') {
+      if (options.length < 2) {
+        errors.push(`第 ${rowNumber} 行：${type}至少需要 2 个选项`)
+        return
+      }
+      const letters = normalizeAnswerLetters(answer)
+      if (type === '单选题' && letters.length !== 1) {
+        errors.push(`第 ${rowNumber} 行：单选题正确选项必须且只能填写 1 个字母`)
+        return
+      }
+      if (type === '多选题' && letters.length < 2) {
+        errors.push(`第 ${rowNumber} 行：多选题正确选项至少填写 2 个字母`)
+        return
+      }
+      const invalidLetter = letters.find(letter => optionColumns.indexOf(letter) >= options.length)
+      if (invalidLetter) {
+        errors.push(`第 ${rowNumber} 行：正确选项 ${invalidLetter} 没有对应选项内容`)
+        return
+      }
+      answer = letters.join(',')
+      payloadOptions = JSON.stringify(options)
+    } else if (type === '判断题') {
+      const judgeOptions = options.length >= 2 ? options.slice(0, 2) : ['正确', '错误']
+      const letters = normalizeAnswerLetters(answer)
+      if (letters.length === 1) {
+        const answerIndex = optionColumns.indexOf(letters[0])
+        answer = judgeOptions[answerIndex] || ''
+      }
+      if (!['正确', '错误'].includes(answer)) {
+        errors.push(`第 ${rowNumber} 行：判断题正确选项需填写 A/B 或 正确/错误`)
+        return
+      }
+      payloadOptions = JSON.stringify(['正确', '错误'])
+    } else {
+      const answers = options.filter(Boolean)
+      answer = answer || answers.join('/')
+    }
+
+    parsed.push({
+      subject: currentSubject.value.name,
+      type,
+      title,
+      options: payloadOptions,
+      answer,
+      difficulty
+    })
+  })
+
+  return { parsed, errors }
+}
+
+const handleExcelImport = async (uploadFile) => {
+  const file = uploadFile.raw
+  if (!file || importing.value) return
+  if (!/\.(xlsx|xls)$/i.test(file.name)) {
+    ElMessage.error('请上传 Excel 模板文件（.xlsx 或 .xls）')
+    return
+  }
+
+  importing.value = true
+  try {
+    const buffer = await file.arrayBuffer()
+    const workbook = XLSX.read(buffer, { type: 'array' })
+    const sheet = workbook.Sheets[workbook.SheetNames[0]]
+    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' })
+    const { parsed, errors } = parseImportRows(rows)
+
+    if (!parsed.length) {
+      ElMessage.error(errors[0] || '模板中没有可导入的试题')
+      return
+    }
+
+    if (errors.length) {
+      await ElMessageBox.confirm(
+        `已解析 ${parsed.length} 道题，发现 ${errors.length} 条问题。是否先导入可用试题？\n\n${errors.slice(0, 5).join('\n')}${errors.length > 5 ? '\n...' : ''}`,
+        '导入确认',
+        { type: 'warning', confirmButtonText: '继续导入', cancelButtonText: '取消' }
+      )
+    }
+
+    let success = 0
+    const failed = []
+    for (const question of parsed) {
+      try {
+        await request.post('/teacher/questions', question)
+        success += 1
+      } catch (e) {
+        failed.push(question.title)
+      }
+    }
+
+    await Promise.all([fetchQuestions(), fetchSubjectCounts()])
+    if (failed.length) {
+      ElMessage.warning(`成功导入 ${success} 道题，${failed.length} 道题导入失败`)
+    } else {
+      ElMessage.success(`成功导入 ${success} 道题`)
+    }
+  } catch (e) {
+    if (e !== 'cancel') {
+      console.error('Failed to import Excel questions', e)
+      ElMessage.error('Excel模板解析或导入失败')
+    }
+  } finally {
+    importing.value = false
+  }
+}
+
+const addOption = () => {
+  if (questionForm.value.options.length >= 8) {
+    ElMessage.warning('最多支持 8 个选项')
+    return
+  }
+  questionForm.value.options.push('')
+}
+
+const removeOption = (index) => {
+  const removedLetter = getOptionLetter(index)
+  questionForm.value.options.splice(index, 1)
+  if (questionForm.value.type === '单选题' && questionForm.value.answer === removedLetter) {
+    questionForm.value.answer = ''
+  }
+  if (questionForm.value.type === '多选题') {
+    questionForm.value.multiAnswer = questionForm.value.multiAnswer.filter(item => item !== removedLetter)
+  }
+}
+
+watch(() => questionForm.value.type, (type, oldType) => {
+  if (hydratingQuestionForm.value) return
+  if (!oldType || type === oldType) return
+  if (type === '判断题') {
+    questionForm.value.options = ['正确', '错误']
+    questionForm.value.answer = '正确'
+    questionForm.value.multiAnswer = []
+    return
+  }
+  if (type === '单选题') {
+    questionForm.value.options = questionForm.value.options.length >= 2 ? questionForm.value.options : ['', '', '', '']
+    questionForm.value.answer = ''
+    questionForm.value.multiAnswer = []
+    return
+  }
+  if (type === '多选题') {
+    questionForm.value.options = questionForm.value.options.length >= 2 ? questionForm.value.options : ['', '', '', '']
+    questionForm.value.answer = ''
+    questionForm.value.multiAnswer = []
+    return
+  }
+  questionForm.value.options = []
+  questionForm.value.answer = ''
+  questionForm.value.multiAnswer = []
+})
 
 const editQuestion = (row) => {
   isEditing.value = true
@@ -236,15 +488,21 @@ const editQuestion = (row) => {
     if (q) {
       let opts = ['', '', '', '']
       try { opts = JSON.parse(q.options) || opts } catch(e) {}
+      hydratingQuestionForm.value = true
+      const answer = q.answer || ''
       questionForm.value = {
         questionId: q.questionId,
         subject: q.subject,
         type: q.type,
         title: q.title,
         options: opts.length ? opts : ['', '', '', ''],
-        answer: q.answer || '',
+        answer,
+        multiAnswer: q.type === '多选题' ? answer.split(',').filter(Boolean) : [],
         difficulty: q.difficulty || 3
       }
+      nextTick(() => {
+        hydratingQuestionForm.value = false
+      })
       questionDialogVisible.value = true
     }
   })
@@ -252,7 +510,7 @@ const editQuestion = (row) => {
 
 const addQuestion = () => {
   isEditing.value = false
-  questionForm.value = { questionId: null, subject: currentSubject.value.name, type: '单选题', title: '', options: ['', '', '', ''], answer: '', difficulty: 3 }
+  questionForm.value = createQuestionForm(currentSubject.value.name)
   questionDialogVisible.value = true
 }
 
@@ -261,14 +519,44 @@ const submitQuestion = async () => {
     ElMessage.error('题干不能为空')
     return
   }
+  if (choiceTypes.includes(questionForm.value.type)) {
+    const validOptions = questionForm.value.options.map(item => item.trim()).filter(Boolean)
+    if (validOptions.length < 2) {
+      ElMessage.error('选项题至少需要填写 2 个选项')
+      return
+    }
+    if (questionForm.value.type === '单选题' && !questionForm.value.answer) {
+      ElMessage.error('请选择单选题标准答案')
+      return
+    }
+    if (questionForm.value.type === '多选题' && questionForm.value.multiAnswer.length < 2) {
+      ElMessage.error('多选题至少需要选择 2 个正确答案')
+      return
+    }
+  }
+  if (questionForm.value.type === '判断题' && !questionForm.value.answer) {
+    ElMessage.error('请选择判断题标准答案')
+    return
+  }
+  if (!['单选题', '多选题', '判断题'].includes(questionForm.value.type) && !questionForm.value.answer) {
+    ElMessage.error('请填写标准答案或参考答案')
+    return
+  }
+
+  const options = questionForm.value.type === '判断题'
+    ? ['正确', '错误']
+    : questionForm.value.options.map(item => item.trim()).filter(Boolean)
+  const answer = questionForm.value.type === '多选题'
+    ? [...questionForm.value.multiAnswer].sort().join(',')
+    : questionForm.value.answer
   try {
     const payload = {
       questionId: questionForm.value.questionId,
       subject: currentSubject.value.name,
       type: questionForm.value.type,
       title: questionForm.value.title,
-      options: optionTypes.includes(questionForm.value.type) ? JSON.stringify(questionForm.value.options.filter(o => o)) : null,
-      answer: questionForm.value.answer,
+      options: optionTypes.includes(questionForm.value.type) ? JSON.stringify(options) : null,
+      answer,
       difficulty: questionForm.value.difficulty
     }
     
@@ -340,6 +628,31 @@ onMounted(async () => {
 :deep(.el-form-item) { margin-bottom: 20px; }
 :deep(.el-table) { background: transparent !important; }
 :deep(.el-table tr), :deep(.el-table td), :deep(.el-table th.el-table__cell) { background: transparent !important; }
+
+.option-editor {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.option-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.option-letter {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--primary-light);
+  color: var(--primary-color);
+  font-weight: 700;
+}
 
 .pagination-container {
   display: flex;

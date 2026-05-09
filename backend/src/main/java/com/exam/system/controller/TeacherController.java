@@ -1,8 +1,11 @@
 package com.exam.system.controller;
 
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.exam.system.common.Result;
 import com.exam.system.entity.ExamArrangement;
 import com.exam.system.entity.QuestionBank;
+import com.exam.system.entity.SysUser;
+import com.exam.system.mapper.SysUserMapper;
 import com.exam.system.service.TeacherService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -21,8 +24,22 @@ public class TeacherController {
     @Autowired
     private TeacherService teacherService;
 
+    @Autowired
+    private SysUserMapper userMapper;
+
     private Integer getCurrentUserId() {
-        return 2; // Hardcoded to teacher1 id=2 for PoC
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || authentication.getName() == null) {
+            throw new IllegalStateException("未获取到当前登录用户");
+        }
+
+        SysUser user = userMapper.selectOne(new QueryWrapper<SysUser>()
+                .eq("username", authentication.getName())
+                .last("LIMIT 1"));
+        if (user == null || user.getUserId() == null) {
+            throw new IllegalStateException("当前登录用户不存在");
+        }
+        return user.getUserId();
     }
 
     @GetMapping("/dashboard")

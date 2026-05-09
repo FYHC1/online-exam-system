@@ -1,7 +1,10 @@
 package com.exam.system.controller;
 
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.exam.system.common.Result;
 import com.exam.system.entity.ExamArrangement;
+import com.exam.system.entity.SysUser;
+import com.exam.system.mapper.SysUserMapper;
 import com.exam.system.service.StudentService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -20,11 +23,22 @@ public class StudentController {
     @Autowired
     private StudentService studentService;
 
+    @Autowired
+    private SysUserMapper userMapper;
+
     private Integer getCurrentUserId() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        // Since we stored username in Principal, we need to map to ID, but for PoC we can return a mocked token ID or rely on passed ID
-        // Assuming client passes `studentId` explicitly for now to keep it simple, or we can parse from token.
-        return 3; // Harcoded to student1 id=3 as defined in sql for now.
+        if (authentication == null || authentication.getName() == null) {
+            throw new IllegalStateException("未获取到当前登录用户");
+        }
+
+        SysUser user = userMapper.selectOne(new QueryWrapper<SysUser>()
+                .eq("username", authentication.getName())
+                .last("LIMIT 1"));
+        if (user == null || user.getUserId() == null) {
+            throw new IllegalStateException("当前登录用户不存在");
+        }
+        return user.getUserId();
     }
 
     @GetMapping("/dashboard")

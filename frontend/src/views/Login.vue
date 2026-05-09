@@ -131,11 +131,9 @@
 
 <script setup>
 import { ref, reactive, onMounted, computed, watch } from 'vue'
-import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import request from '@/utils/request'
 
-const router = useRouter()
 const formRef = ref(null)
 const loading = ref(false)
 const captchaImg = ref('')
@@ -247,6 +245,8 @@ const showMessage = (msg) => {
   ElMessage.info(msg)
 }
 
+const delay = (ms) => new Promise(resolve => window.setTimeout(resolve, ms))
+
 const openRegisterDialog = async () => {
   try {
     const res = await request.get('/auth/register/options')
@@ -313,7 +313,8 @@ const handleLogin = () => {
         localStorage.setItem('userInfo', JSON.stringify(res.userInfo))
         
         ElMessage.success('登录成功，欢迎回来！')
-        router.push(`/${res.userInfo.role}/dashboard`)
+        await delay(500)
+        window.location.replace(`/${res.userInfo.role}/dashboard`)
       } catch (error) {
         // 请求失败自动刷新验证码
         getCaptcha()

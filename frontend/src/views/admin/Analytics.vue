@@ -4,6 +4,7 @@
       <div>
         <h2>数据监控</h2>
         <p>查看考试、成绩、题库和异常记录，帮助管理员快速发现需要处理的问题。</p>
+        <p class="refresh-hint">每 30 秒自动刷新一次，最后更新：{{ lastUpdated || '暂无' }}</p>
       </div>
       <el-button type="primary" plain :loading="loading" @click="fetchAnalytics">刷新数据</el-button>
     </div>
@@ -88,7 +89,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import request from '@/utils/request'
 
@@ -97,6 +98,8 @@ const summary = ref({})
 const subjects = ref([])
 const departments = ref([])
 const attentionRecords = ref([])
+const lastUpdated = ref('')
+let refreshTimer = null
 
 const summaryCards = computed(() => [
   { label: '学生人数', value: summary.value.studentCount || 0, desc: '当前可参与考试的学生账号' },
@@ -124,6 +127,7 @@ const fetchAnalytics = async () => {
     subjects.value = data.subjects || []
     departments.value = data.departments || []
     attentionRecords.value = data.attentionRecords || []
+    lastUpdated.value = new Date().toLocaleTimeString('zh-CN', { hour12: false })
   } catch (e) {
     ElMessage.error('获取数据监控信息失败')
   } finally {
@@ -133,6 +137,17 @@ const fetchAnalytics = async () => {
 
 onMounted(() => {
   fetchAnalytics()
+  refreshTimer = window.setInterval(() => {
+    if (!loading.value) {
+      fetchAnalytics()
+    }
+  }, 30000)
+})
+
+onUnmounted(() => {
+  if (refreshTimer) {
+    window.clearInterval(refreshTimer)
+  }
 })
 </script>
 
@@ -155,6 +170,9 @@ onMounted(() => {
 .header-card p,
 .panel-header p {
   margin-top: 8px;
+}
+.refresh-hint {
+  font-size: 12px;
 }
 
 .stat-card {

@@ -7,13 +7,18 @@ import com.exam.system.entity.*;
 import com.exam.system.mapper.*;
 import com.exam.system.service.AdminService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.connection.RedisConnection;
+import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import javax.sql.DataSource;
 import java.io.IOException;
+import java.lang.management.ManagementFactory;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.sql.Connection;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -26,6 +31,7 @@ public class AdminServiceImpl implements AdminService {
     private static final Path QUESTION_BANKS_FILE = Paths.get("data", "question-bank-subjects.json");
     private static final Path SUBJECT_CATEGORIES_FILE = Paths.get("data", "subject-categories.json");
     private static final Path LOGIN_CAROUSEL_FILE = Paths.get("data", "login-carousel.json");
+    private static final Path AUDIT_LOG_FILE = Paths.get("data", "audit-logs.json");
 
     @Autowired
     private SysUserMapper userMapper;
@@ -47,6 +53,104 @@ public class AdminServiceImpl implements AdminService {
     private PaperQuestionRelMapper paperQuestionRelMapper;
     @Autowired
     private ObjectMapper objectMapper;
+    @Autowired
+    private DataSource dataSource;
+    @Autowired(required = false)
+    private RedisConnectionFactory redisConnectionFactory;
+
+    private int percent(double value) {
+        if (Double.isNaN(value) || Double.isInfinite(value) || value < 0) {
+            return 0;
+        }
+        return (int) Math.max(0, Math.min(100, Math.round(value)));
+    }
+
+    private Map<String, Object> healthItem(String node, Integer cpu, Integer ram, String status, String detail) {
+        Map<String, Object> item = new HashMap<>();
+        item.put("node", node);
+        item.put("cpu", cpu);
+        item.put("ram", ram);
+        item.put("status", status);
+        item.put("detail", detail);
+        return item;
+    }
+
+    private Map<String, Object> buildServiceHealth() {
+        List<Map<String, Object>> servers = new ArrayList<>();
+        Runtime runtime = Runtime.getRuntime();
+        long maxMemory = runtime.maxMemory();
+        long usedMemory = runtime.totalMemory() - runtime.freeMemory();
+        int jvmMemory = maxMemory <= 0 ? 0 : percent(usedMemory * 100.0 / maxMemory);
+        int systemCpu = 0;
+        int systemMemory = 0;
+        try {
+            java.lang.management.OperatingSystemMXBean rawBean = ManagementFactory.getOperatingSystemMXBean();
+            if (rawBean instanceof com.sun.management.OperatingSystemMXBean osBean) {
+                systemCpu = percent(osBean.getSystemCpuLoad() * 100);
+                long totalPhysicalMemory = osBean.getTotalPhysicalMemorySize();
+                long freePhysicalMemory = osBean.getFreePhysicalMemorySize();
+                if (totalPhysicalMemory > 0) {
+                    systemMemory = percent((totalPhysicalMemory - freePhysicalMemory) * 100.0 / totalPhysicalMemory);
+                }
+            }
+        } catch (Exception ignored) {
+        }
+
+        servers.add(healthItem(
+                "Spring Boot 应用服务",
+                systemCpu,
+                jvmMemory,
+                "正常",
+                "JVM内存 " + (usedMemory / 1024 / 1024) + "MB / " + (maxMemory / 1024 / 1024) + "MB"
+        ));
+        servers.add(healthItem(
+                "服务器主机资源",
+                systemCpu,
+                systemMemory,
+                "正常",
+                "CPU与物理内存来自当前运行主机"
+        ));
+
+        long mysqlStart = System.currentTimeMillis();
+        try (Connection connection = dataSource.getConnection()) {
+            boolean valid = connection.isValid(2);
+            long latency = System.currentTimeMillis() - mysqlStart;
+            servers.add(healthItem(
+                    "MySQL 核心数据库",
+                    null,
+                    null,
+                    valid ? "正常" : "异常",
+                    valid ? "连接正常，响应 " + latency + "ms" : "连接校验失败"
+            ));
+        } catch (Exception e) {
+            servers.add(healthItem("MySQL 核心数据库", null, null, "异常", e.getMessage()));
+        }
+
+        long redisStart = System.currentTimeMillis();
+        if (redisConnectionFactory == null) {
+            servers.add(healthItem("Redis 分布式缓存", null, null, "异常", "Redis连接工厂未初始化"));
+        } else {
+            try (RedisConnection connection = redisConnectionFactory.getConnection()) {
+                String pong = connection.ping();
+                long latency = System.currentTimeMillis() - redisStart;
+                boolean valid = "PONG".equalsIgnoreCase(pong);
+                servers.add(healthItem(
+                        "Redis 分布式缓存",
+                        null,
+                        null,
+                        valid ? "正常" : "异常",
+                        valid ? "PING正常，响应 " + latency + "ms" : "PING返回：" + pong
+                ));
+            } catch (Exception e) {
+                servers.add(healthItem("Redis 分布式缓存", null, null, "异常", e.getMessage()));
+            }
+        }
+
+        Map<String, Object> health = new HashMap<>();
+        health.put("servers", servers);
+        health.put("updatedAt", new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date()));
+        return health;
+    }
 
     private SysClass resolveClass(String classToken) {
         if (classToken == null || classToken.isBlank()) {
@@ -222,6 +326,26 @@ public class AdminServiceImpl implements AdminService {
             return Integer.parseInt(String.valueOf(raw));
         } catch (Exception e) {
             return fallback;
+        }
+    }
+
+    private List<Map<String, Object>> loadAuditLogs() {
+        try {
+            if (Files.notExists(AUDIT_LOG_FILE)) {
+                return new ArrayList<>();
+            }
+            return objectMapper.readValue(AUDIT_LOG_FILE.toFile(), new TypeReference<List<Map<String, Object>>>() {});
+        } catch (Exception e) {
+            return new ArrayList<>();
+        }
+    }
+
+    private void saveAuditLogs(List<Map<String, Object>> logs) {
+        try {
+            Files.createDirectories(AUDIT_LOG_FILE.getParent());
+            objectMapper.writerWithDefaultPrettyPrinter().writeValue(AUDIT_LOG_FILE.toFile(), logs);
+        } catch (IOException e) {
+            throw new RuntimeException("保存操作日志失败", e);
         }
     }
 
@@ -404,6 +528,7 @@ public class AdminServiceImpl implements AdminService {
                 Map.of("role", "教师", "count", teacherCount, "percent", totalUsers == 0 ? 0 : Math.round(teacherCount * 1000.0 / totalUsers) / 10.0),
                 Map.of("role", "管理员", "count", adminCount, "percent", totalUsers == 0 ? 0 : Math.round(adminCount * 1000.0 / totalUsers) / 10.0)
         ));
+        stats.put("serviceHealth", buildServiceHealth());
         return stats;
     }
 
@@ -577,6 +702,38 @@ public class AdminServiceImpl implements AdminService {
         }
         result.put("attentionRecords", attentionList.stream().limit(20).toList());
         return result;
+    }
+
+    @Override
+    public List<Map<String, Object>> getAuditLogs(String keyword) {
+        List<Map<String, Object>> logs = loadAuditLogs();
+        logs.sort((a, b) -> String.valueOf(b.get("time")).compareTo(String.valueOf(a.get("time"))));
+        if (keyword == null || keyword.isBlank()) {
+            return logs;
+        }
+        String key = keyword.trim();
+        return logs.stream()
+                .filter(item -> String.valueOf(item.getOrDefault("actor", "")).contains(key)
+                        || String.valueOf(item.getOrDefault("action", "")).contains(key)
+                        || String.valueOf(item.getOrDefault("ip", "")).contains(key))
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public void recordAuditLog(String actor, String action, String ip, boolean risk) {
+        List<Map<String, Object>> logs = loadAuditLogs();
+        Map<String, Object> item = new HashMap<>();
+        item.put("id", UUID.randomUUID().toString());
+        item.put("time", new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date()));
+        item.put("actor", actor == null || actor.isBlank() ? "管理员" : actor);
+        item.put("action", action);
+        item.put("ip", ip == null || ip.isBlank() ? "未知" : ip);
+        item.put("risk", risk);
+        logs.add(0, item);
+        if (logs.size() > 500) {
+            logs = new ArrayList<>(logs.subList(0, 500));
+        }
+        saveAuditLogs(logs);
     }
 
     @Override

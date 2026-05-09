@@ -108,8 +108,11 @@
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column prop="department" label="所属学院" show-overflow-tooltip />
-          <el-table-column prop="className" :label="currentRole.id === 'teacher' ? '关联班级' : '所属班级'" show-overflow-tooltip />
+          <el-table-column v-if="currentRole.id !== 'admin'" prop="department" label="所属学院" show-overflow-tooltip />
+          <el-table-column v-if="currentRole.id !== 'admin'" prop="className" :label="currentRole.id === 'teacher' ? '关联班级' : '所属班级'" show-overflow-tooltip />
+          <el-table-column v-if="currentRole.id === 'admin'" prop="phone" label="联系方式" show-overflow-tooltip>
+            <template #default="scope">{{ scope.row.phone || '未填写' }}</template>
+          </el-table-column>
           <el-table-column v-if="currentRole.id === 'teacher'" prop="subjectsText" label="关联学科" show-overflow-tooltip />
           <el-table-column prop="status" label="账号状态" width="120">
             <template #default="scope">
